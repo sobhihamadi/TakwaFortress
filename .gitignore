@@ -1,0 +1,16 @@
+.gradle/
+build/
+**/build/
+local.properties
+*.properties
+.idea/
+*.iml
+*.iws
+*.ipr
+captures/
+*.jks
+*.keystore
+temp.txt
+*.log
+.DS_Store
+Thumbs.db

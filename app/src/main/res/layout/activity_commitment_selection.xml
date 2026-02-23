@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- ============================================================ -->
+    <!-- PLAN SELECTION SCREEN                                        -->
+    <!-- ============================================================ -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#1A1A2E"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <!-- Header -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🛡️ Choose Your Plan"
+                android:textColor="#FFFFFF"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select a plan to activate Taqwa Fortress"
+                android:textColor="#B0B0B0"
+                android:textSize="14sp"
+                android:layout_marginBottom="32dp" />
+
+            <!-- Radio Group -->
+            <RadioGroup
+                android:id="@+id/planRadioGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp">
+
+                <RadioButton
+                    android:id="@+id/planTrialRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="3-Day Free Trial — FREE"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_radio_button"
+                    android:layout_marginBottom="10dp"
+                    android:buttonTint="#4CAF50" />
+
+                <RadioButton
+                    android:id="@+id/planMonthlyRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1 Month — $3.90"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_radio_button"
+                    android:layout_marginBottom="10dp"
+                    android:buttonTint="#4CAF50" />
+
+                <RadioButton
+                    android:id="@+id/planQuarterlyRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="3 Months — $9.90"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_radio_button"
+                    android:layout_marginBottom="10dp"
+                    android:buttonTint="#4CAF50" />
+
+                <RadioButton
+                    android:id="@+id/planBiannualRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="6 Months — $15.90"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_radio_button"
+                    android:layout_marginBottom="10dp"
+                    android:buttonTint="#4CAF50" />
+
+                <RadioButton
+                    android:id="@+id/planAnnualRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1 Year — $24.90"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_radio_button"
+                    android:buttonTint="#4CAF50" />
+
+            </RadioGroup>
+
+            <!-- Plan Details Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="16dp"
+                android:layout_marginBottom="24dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📝 Plan Details"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="10dp" />
+
+                <TextView
+                    android:id="@+id/planDetailsText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Select a plan to see details"
+                    android:textColor="#B0B0B0"
+                    android:textSize="14sp"
+                    android:lineSpacingExtra="4dp" />
+
+            </LinearLayout>
+
+            <!-- Proceed Button -->
+            <Button
+                android:id="@+id/activateButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Select a Plan"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_button_primary"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Progress Bar -->
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"
+                android:indeterminateTint="#4CAF50"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Status Text -->
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Choose your plan"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textAlignment="center" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ============================================================ -->
+    <!-- WHOP CHECKOUT WEBVIEW OVERLAY                               -->
+    <!-- Sits on top, hidden by default, shown when payment starts   -->
+    <!-- ============================================================ -->
+    <LinearLayout
+        android:id="@+id/webViewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#1A1A2E"
+        android:visibility="gone">
+
+        <!-- Top bar with close button -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:background="#16213E"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
+            <Button
+                android:id="@+id/btnCloseWebView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✕ Cancel"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:background="@android:color/transparent" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Secure Checkout"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <!-- Spacer to balance the cancel button -->
+            <View
+                android:layout_width="80dp"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <!-- The actual WebView -->
+        <WebView
+            android:id="@+id/checkoutWebView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
+</FrameLayout>

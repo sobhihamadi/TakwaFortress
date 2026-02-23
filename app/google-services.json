@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "912117374585",
+    "project_id": "takwafortress",
+    "storage_bucket": "takwafortress.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:912117374585:android:00b8102ff3fd37ba2afea8",
+        "android_client_info": {
+          "package_name": "com.example.takwafortress"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "912117374585-355t70j58jm336gj6ad0h3k4ui8p5son.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.takwafortress",
+            "certificate_hash": "da41d2f584fb3c314285d459b81bb0bc9ac1487f"
+          }
+        },
+        {
+          "client_id": "912117374585-hsqsjs46nsr8rpl54qjgmnjah54kl7ii.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGog8kpN7TtqPJZet90cZgOmXyCgjVYoU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "912117374585-hsqsjs46nsr8rpl54qjgmnjah54kl7ii.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

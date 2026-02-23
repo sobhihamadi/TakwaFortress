@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.takwafortress">
+
+    <!-- Network Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <!-- Device Admin & System Permissions -->
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+
+    <!-- Service Permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- System Permissions -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:name=".TaqwaApplication"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_fortress_logo"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TaqwaFortress"
+        tools:targetApi="34">
+
+        <!-- ============================================ -->
+        <!-- MAIN LAUNCHER ACTIVITY                       -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.activities.MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".ui.activities.TrialExpiredActivity"
+            android:screenOrientation="portrait" android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity android:name=".ui.activities.SubscriptionExpiredActivity"
+            android:screenOrientation="portrait" android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity android:name=".ui.activities.CommitmentCompleteActivity"
+            android:screenOrientation="portrait" android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity android:name=".ui.activities.UnauthorizedDeviceActivity"
+            android:screenOrientation="portrait" android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <!-- ============================================ -->
+        <!-- AUTHENTICATION FLOW                          -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.activities.WelcomeActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.PlanSelectionActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.RegistrationActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.LoginActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <!-- ============================================ -->
+        <!-- SETUP FLOW                                   -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.activities.DeviceOwnerSetupActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.CommitmentSelectionActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <!-- ============================================ -->
+        <!-- LEGACY (DEPRECATED)                          -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.activities.LicenseActivationActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:enabled="false"
+            tools:ignore="DisabledBaseActivity"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <!-- ============================================ -->
+        <!-- DASHBOARD & FEATURES                         -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".ui.activities.FortressDashboardActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.ContentFilteringActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <activity
+            android:name=".ui.activities.ManageBlockedAppsActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:label="@string/manage_blocked_apps"
+            android:theme="@style/Theme.TaqwaFortress" />
+
+        <!-- ============================================ -->
+        <!-- BROADCAST RECEIVERS                          -->
+        <!-- ============================================ -->
+
+        <!-- Device Admin Receiver -->
+        <receiver
+            android:name=".receivers.DeviceAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policies" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Package Change Receiver -->
+        <receiver
+            android:name=".receivers.PackageChangeReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ✅ FIXED: was ".receivers.BootReceiver" — class doesn't exist.
+             Correct class name is BootCompletedReceiver. -->
+        <receiver
+            android:name=".receivers.BootCompletedReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ============================================ -->
+        <!-- SERVICES                                     -->
+        <!-- ============================================ -->
+
+        <!-- VPN Service - DNS filtering -->
+        <service
+            android:name=".services.filtering.TaqwaDnsVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <!-- Fortress Monitor Service -->
+        <service
+            android:name=".services.monitoring.FortressMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental_control" />
+        </service>
+
+    </application>
+</manifest>

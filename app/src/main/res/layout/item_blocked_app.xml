@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@drawable/bg_card"
+    android:padding="16dp"
+    android:layout_marginBottom="8dp">
+
+    <!-- App Icon -->
+    <TextView
+        android:id="@+id/appIconText"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:text="🌐"
+        android:textSize="32sp"
+        android:gravity="center"
+        android:layout_marginEnd="16dp" />
+
+    <!-- App Info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/appNameText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Opera Browser"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/packageNameText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="com.opera.browser"
+            android:textColor="#666666"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <!-- Status Badge -->
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Suspended"
+        android:textColor="#4CAF50"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:padding="8dp"
+        android:background="@drawable/bg_badge"
+        android:layout_gravity="center_vertical" />
+
+</LinearLayout>

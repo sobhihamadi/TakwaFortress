@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!-- Force lock -->
+        <force-lock />
+
+        <!-- Wipe data (factory reset protection) -->
+        <wipe-data />
+
+        <!-- Reset password -->
+        <reset-password />
+
+        <!-- Limit password -->
+        <limit-password />
+
+        <!-- Watch login attempts -->
+        <watch-login />
+
+        <!-- Disable camera -->
+        <disable-camera />
+
+        <!-- Disable keyguard features -->
+        <disable-keyguard-features />
+
+        <!-- Set global proxy -->
+        <set-global-proxy />
+    </uses-policies>
+</device-admin>
