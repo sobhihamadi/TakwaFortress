@@ -4,9 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.example.takwafortress.R
+import com.example.takwafortress.services.core.UpdateChecker
 import com.example.takwafortress.ui.viewmodels.MainViewModel
 import com.example.takwafortress.ui.viewmodels.RouteDestination
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -16,8 +19,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // ✅ ViewModel initialized BEFORE anything uses it
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
+        // ✅ Observe destinations BEFORE resolveRoute is called
         viewModel.destination.observe(this) { destination ->
             when (destination) {
                 is RouteDestination.Welcome -> {
@@ -32,8 +37,6 @@ class MainActivity : AppCompatActivity() {
                 is RouteDestination.Dashboard -> {
                     navigateTo(FortressDashboardActivity::class.java)
                 }
-
-                // ✅ NEW: plan ended → dashboard in expired mode
                 is RouteDestination.ExpiredDashboard -> {
                     val intent = Intent(this, FortressDashboardActivity::class.java).apply {
                         putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
@@ -41,9 +44,6 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                     finish()
                 }
-
-                // Legacy routes — now redirect to expired dashboard instead of
-                // separate screens, since FortressDashboardActivity handles everything
                 is RouteDestination.CommitmentComplete -> {
                     val intent = Intent(this, FortressDashboardActivity::class.java).apply {
                         putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
@@ -58,7 +58,6 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                     finish()
                 }
-
                 is RouteDestination.SubscriptionExpired -> {
                     navigateTo(SubscriptionExpiredActivity::class.java)
                 }
@@ -73,7 +72,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.resolveRoute()
+        // ✅ Check for update first, then route — single call only
+        lifecycleScope.launch {
+            val checker = UpdateChecker(this@MainActivity)
+            val update = checker.checkForUpdate()
+            if (update != null) {
+                checker.showUpdateDialog(this@MainActivity, update)
+                return@launch
+            }
+            viewModel.resolveRoute()
+        }
     }
 
     private fun navigateTo(activityClass: Class<*>) {
