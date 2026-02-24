@@ -2,7 +2,6 @@
 build/
 **/build/
 local.properties
-*.properties
 .idea/
 *.iml
 *.iws
