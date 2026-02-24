@@ -52,12 +52,10 @@
 
 # ==================== BOUNCYCASTLE (CRITICAL) ====================
 
-# ✅ Keep ALL BouncyCastle classes
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
 -keepclassmembers class org.bouncycastle.** { *; }
 
-# ✅ Keep EdEC classes specifically (this was causing the crash)
 -keep class org.bouncycastle.asn1.edec.** { *; }
 -keep class org.bouncycastle.crypto.params.** { *; }
 -keep class org.bouncycastle.jcajce.** { *; }
@@ -76,65 +74,48 @@
 
 # ==================== TAQWA FORTRESS ====================
 
-# Keep all model classes (for data integrity)
 -keep class com.example.takwafortress.model.** { *; }
 
-# Keep all enums
 -keepclassmembers enum com.example.takwafortress.model.enums.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
 
-# Keep builders
 -keep class com.example.takwafortress.model.builders.** { *; }
-
-# Keep entities with identifiers
 -keep class com.example.takwafortress.model.entities.** { *; }
-
-# Keep interfaces
 -keep class com.example.takwafortress.model.interfaces.** { *; }
 
-# Keep Device Admin Receiver
 -keep class com.example.takwafortress.receivers.DeviceAdminReceiver { *; }
 -keep class com.example.takwafortress.receivers.** { *; }
 
-# Keep Services
 -keep class com.example.takwafortress.services.** { *; }
-
-# Keep Repositories
 -keep class com.example.takwafortress.repository.** { *; }
-
-# Keep Mappers
 -keep class com.example.takwafortress.mappers.** { *; }
 
-# Keep Application class
 -keep class com.example.takwafortress.TaqwaApplication { *; }
 
-# Keep Activities
 -keep class com.example.takwafortress.ui.activities.** { *; }
-
-# Keep Fragments
 -keep class com.example.takwafortress.ui.fragments.** { *; }
-
-# Keep ViewModels
 -keep class com.example.takwafortress.ui.viewmodels.** { *; }
 
 # ==================== DEVICE POLICY MANAGER ====================
 
-# Keep Device Policy Manager related classes
 -keep class android.app.admin.DevicePolicyManager { *; }
 -keep class android.app.admin.DeviceAdminReceiver { *; }
 
+# ==================== FIREBASE & GOOGLE ====================
+
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+
 # ==================== REMOVE LOGS (RELEASE ONLY) ====================
 
-# Remove all Log.d, Log.v, Log.i calls in release
 -assumenosideeffects class android.util.Log {
     public static *** d(...);
     public static *** v(...);
     public static *** i(...);
 }
 
-# Keep Log.w and Log.e for production debugging
 -keep class android.util.Log {
     public static *** w(...);
     public static *** e(...);
@@ -142,8 +123,16 @@
 
 # ==================== SUPPRESS WARNINGS ====================
 
-# Suppress warnings for known issues
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 -dontwarn io.github.muntashirakon.adb.**
+
+# ── Fix: R8 missing classes from com.google.crypto.tink ──────────────────────
+# Tink references Google HTTP Client and Joda Time as optional dependencies
+# not present on Android. Safe to ignore — Tink uses Android's HTTP stack.
+-dontwarn com.google.api.client.http.**
+-dontwarn org.joda.time.**
+
+# ── Suppress deprecated Google Sign-In warnings ───────────────────────────────
+-dontwarn com.google.android.gms.auth.api.signin.**
