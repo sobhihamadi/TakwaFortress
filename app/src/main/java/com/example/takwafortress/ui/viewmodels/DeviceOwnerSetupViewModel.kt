@@ -49,9 +49,11 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
         val brand = DeviceBrand.fromManufacturer(Build.MANUFACTURER)
         _deviceBrand.postValue(brand)
 
-        val method = if (brand.supportsKnox) ActivationMethod.KNOX
-        else ActivationMethod.WIRELESS_ADB
+        // ✅ MVP: Always use Wireless ADB for all devices
+        // Knox activation disabled until Samsung developer account is set up
+        val method = ActivationMethod.WIRELESS_ADB
         _activationMethod.postValue(method)
+
 
         _setupState.postValue(DeviceOwnerSetupState.Ready(brand, method))
     }
