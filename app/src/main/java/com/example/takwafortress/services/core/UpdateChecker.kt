@@ -3,6 +3,7 @@ package com.example.takwafortress.services.core
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.appcompat.app.AlertDialog
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -27,7 +28,7 @@ class UpdateChecker(private val context: android.content.Context) {
                 .get()
                 .await()
 
-            val remoteVersionCode = doc.getLong("version_code") ?: 0
+            val remoteVersionCode = doc.getLong("version_code") ?: 0L
             val currentVersionCode = getCurrentVersionCode()
 
             if (remoteVersionCode > currentVersionCode) {
@@ -45,12 +46,19 @@ class UpdateChecker(private val context: android.content.Context) {
         }
     }
 
-    private fun getCurrentVersionCode(): Int {
+    private fun getCurrentVersionCode(): Long {
         return try {
-            context.packageManager
-                .getPackageInfo(context.packageName, 0)
-                .versionCode
-        } catch (e: Exception) { 0 }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                context.packageManager
+                    .getPackageInfo(context.packageName, 0)
+                    .longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager
+                    .getPackageInfo(context.packageName, 0)
+                    .versionCode.toLong()
+            }
+        } catch (e: Exception) { 0L }
     }
 
     fun showUpdateDialog(activity: Activity, info: VersionInfo) {
