@@ -131,15 +131,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Update Firestore version
         run: |
           APK_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.newTag }}/app-release.apk"
-          VERSION_NAME="${{ steps.version.outputs.newTag }}"
           VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="${{ steps.version.outputs.newTag }}"
+
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
 
           curl -X PATCH \
             "https://firestore.googleapis.com/v1/projects/${{ secrets.FIREBASE_PROJECT_ID }}/databases/(default)/documents/app_config/version" \
-            -H "Authorization: Bearer ${{ secrets.FIREBASE_TOKEN }}" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{
               \"fields\": {
