@@ -64,13 +64,18 @@ class UpdateChecker(private val context: android.content.Context) {
     fun showUpdateDialog(activity: Activity, info: VersionInfo) {
         val dialog = AlertDialog.Builder(activity)
             .setTitle("New Version Available — ${info.versionName}")
-            .setMessage("What's new:\n${info.releaseNotes}\n\nPlease update to continue.")
+            .setMessage("What's new:\n${info.releaseNotes}\n\nA new version is required to continue.")
             .setPositiveButton("Download Update") { _, _ ->
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl))
                 activity.startActivity(intent)
             }
-            .setCancelable(!info.forceUpdate)
+            .setCancelable(false) // prevents tap outside
             .create()
+
+        // Prevents back button from dismissing
+        dialog.setOnKeyListener { _, keyCode, _ ->
+            keyCode == android.view.KeyEvent.KEYCODE_BACK
+        }
 
         dialog.show()
     }
