@@ -31,7 +31,12 @@ class UpdateChecker(private val context: android.content.Context) {
             val remoteVersionCode = doc.getLong("version_code") ?: 0L
             val currentVersionCode = getCurrentVersionCode()
 
+            android.util.Log.d("UPDATE_DEBUG", "Remote version: $remoteVersionCode")
+            android.util.Log.d("UPDATE_DEBUG", "Current version: $currentVersionCode")
+            android.util.Log.d("UPDATE_DEBUG", "APK URL: ${doc.getString("apk_url")}")
+
             if (remoteVersionCode > currentVersionCode) {
+                android.util.Log.d("UPDATE_DEBUG", "Update available!")
                 VersionInfo(
                     versionCode  = remoteVersionCode,
                     versionName  = doc.getString("version_name") ?: "",
@@ -39,9 +44,13 @@ class UpdateChecker(private val context: android.content.Context) {
                     forceUpdate  = doc.getBoolean("force_update") ?: false,
                     releaseNotes = doc.getString("release_notes") ?: ""
                 )
-            } else null
+            } else {
+                android.util.Log.d("UPDATE_DEBUG", "No update needed")
+                null
+            }
 
         } catch (e: Exception) {
+            android.util.Log.e("UPDATE_DEBUG", "Error checking update: ${e.message}", e)
             null
         }
     }
