@@ -3,7 +3,6 @@ package com.example.takwafortress.services.core
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -14,6 +13,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
+import android.content.Intent
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CoroutineScope
@@ -51,7 +51,7 @@ class UpdateChecker(private val context: Context) {
                 firestore
                     .collection("app_config")
                     .document("version")
-                    .get(Source.SERVER)   // always hit server, never stale cache
+                    .get(Source.SERVER)
                     .await()
             }
 
@@ -103,7 +103,6 @@ class UpdateChecker(private val context: Context) {
     fun showUpdateDialog(activity: Activity, info: VersionInfo) {
         if (activity.isFinishing || activity.isDestroyed) return
 
-        // Build layout programmatically — no extra XML file needed
         val layout = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(64, 40, 64, 16)
@@ -137,11 +136,10 @@ class UpdateChecker(private val context: Context) {
         val dialog = AlertDialog.Builder(activity)
             .setTitle("🆕  ${info.versionName} Available")
             .setView(layout)
-            .setPositiveButton("Update Now", null)  // null → override onClick below
+            .setPositiveButton("Update Now", null)
             .setCancelable(false)
             .create()
 
-        // Block back button
         dialog.setOnKeyListener { _, keyCode, _ ->
             keyCode == android.view.KeyEvent.KEYCODE_BACK
         }
@@ -150,8 +148,8 @@ class UpdateChecker(private val context: Context) {
             val btn = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
 
             btn.setOnClickListener {
-                btn.isEnabled      = false
-                btn.text           = "Downloading…"
+                btn.isEnabled          = false
+                btn.text               = "Downloading…"
                 progressBar.visibility = View.VISIBLE
                 statusText.visibility  = View.VISIBLE
                 statusText.text        = "Starting download…"
@@ -204,70 +202,148 @@ class UpdateChecker(private val context: Context) {
         onError: (String) -> Unit
     ) {
         try {
-            val destFile = File(
-                activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                APK_FILE_NAME
-            )
+            // ✅ FIX 1: Use getExternalFilesDir properly — no Uri.fromFile needed
+            val destDir  = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val destFile = File(destDir, APK_FILE_NAME)
             if (destFile.exists()) destFile.delete()
 
             val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
-            val downloadId = dm.enqueue(
-                DownloadManager.Request(Uri.parse(apkUrl)).apply {
-                    setTitle("Taqwa Fortress $versionName")
-                    setDescription("Downloading update…")
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-                    setDestinationUri(Uri.fromFile(destFile))
-                    setAllowedOverMetered(true)
-                    setAllowedOverRoaming(true)
-                }
-            )
-
-            Log.d(TAG, "Download enqueued id=$downloadId")
-
-            // Poll every 500ms on IO thread
+            // ✅ FIX 2: GitHub URLs redirect (302). We must follow the redirect manually
+            // to get the real CDN URL, then pass that to DownloadManager.
+            // We do this by resolving the redirect on an IO coroutine first.
             CoroutineScope(Dispatchers.IO).launch {
-                var running = true
-                while (running) {
-                    delay(500)
+                try {
+                    val resolvedUrl = resolveRedirectUrl(apkUrl)
+                    Log.d(TAG, "Resolved URL: $resolvedUrl")
 
-                    val cursor = dm.query(
-                        DownloadManager.Query().setFilterById(downloadId)
-                    ) ?: continue
+                    val request = DownloadManager.Request(Uri.parse(resolvedUrl)).apply {
+                        setTitle("Taqwa Fortress $versionName")
+                        setDescription("Downloading update…")
 
-                    if (!cursor.moveToFirst()) { cursor.close(); continue }
+                        // ✅ FIX 3: VISIBILITY_HIDDEN causes "Invalid value for visibility: 2"
+                        // on many devices. Use VISIBILITY_VISIBLE instead.
+                        setNotificationVisibility(
+                            DownloadManager.Request.VISIBILITY_VISIBLE
+                        )
 
-                    val status     = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                    val total      = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                    val reason     = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                    cursor.close()
+                        // ✅ FIX 4: Use setDestinationInExternalFilesDir instead of
+                        // setDestinationUri(Uri.fromFile(...)) — works correctly on Android 10+
+                        setDestinationInExternalFilesDir(
+                            activity,
+                            Environment.DIRECTORY_DOWNLOADS,
+                            APK_FILE_NAME
+                        )
 
-                    when (status) {
-                        DownloadManager.STATUS_RUNNING -> {
-                            if (total > 0) {
-                                onProgress(((downloaded * 100) / total).toInt())
+                        setAllowedOverMetered(true)
+                        setAllowedOverRoaming(true)
+
+                        // ✅ FIX 5: Add required headers so GitHub CDN accepts the request
+                        addRequestHeader("User-Agent", "Mozilla/5.0")
+                        addRequestHeader("Accept", "application/octet-stream")
+                    }
+
+                    val downloadId = dm.enqueue(request)
+                    Log.d(TAG, "Download enqueued id=$downloadId url=$resolvedUrl")
+
+                    // Poll progress every 500ms
+                    var running = true
+                    while (running) {
+                        delay(500)
+
+                        val cursor = dm.query(
+                            DownloadManager.Query().setFilterById(downloadId)
+                        ) ?: continue
+
+                        if (!cursor.moveToFirst()) { cursor.close(); continue }
+
+                        val status     = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                        val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                        val total      = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                        val reason     = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                        cursor.close()
+
+                        when (status) {
+                            DownloadManager.STATUS_RUNNING,
+                            DownloadManager.STATUS_PENDING -> {
+                                if (total > 0) {
+                                    onProgress(((downloaded * 100) / total).toInt())
+                                }
+                            }
+                            DownloadManager.STATUS_SUCCESSFUL -> {
+                                running = false
+                                Log.d(TAG, "✅ Download complete")
+                                onProgress(100)
+                                onComplete(destFile)
+                            }
+                            DownloadManager.STATUS_FAILED -> {
+                                running = false
+                                Log.e(TAG, "❌ Download failed, reason=$reason")
+                                onError(getDownloadErrorReason(reason))
                             }
                         }
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            running = false
-                            Log.d(TAG, "✅ Download complete")
-                            onProgress(100)
-                            onComplete(destFile)
-                        }
-                        DownloadManager.STATUS_FAILED -> {
-                            running = false
-                            Log.e(TAG, "❌ Download failed, reason=$reason")
-                            onError("code $reason")
-                        }
                     }
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Download coroutine exception: ${e.message}", e)
+                    onError(e.message ?: "unknown error")
                 }
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Download exception: ${e.message}", e)
+            Log.e(TAG, "Download setup exception: ${e.message}", e)
             onError(e.message ?: "unknown error")
         }
+    }
+
+    /**
+     * Follows HTTP redirects (like GitHub's 302 → CDN URL) and returns the final URL.
+     * DownloadManager does NOT follow redirects on its own, so we must resolve first.
+     */
+    private fun resolveRedirectUrl(url: String): String {
+        var currentUrl = url
+        var redirectCount = 0
+        val maxRedirects = 5
+
+        while (redirectCount < maxRedirects) {
+            val connection = java.net.URL(currentUrl).openConnection() as java.net.HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            connection.connectTimeout = 8_000
+            connection.readTimeout    = 8_000
+            connection.connect()
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Redirect check [$redirectCount]: $currentUrl → $responseCode")
+
+            if (responseCode in 300..399) {
+                val location = connection.getHeaderField("Location") ?: break
+                connection.disconnect()
+                currentUrl = location
+                redirectCount++
+            } else {
+                connection.disconnect()
+                break
+            }
+        }
+
+        return currentUrl
+    }
+
+    /**
+     * Translates DownloadManager error codes into readable messages.
+     */
+    private fun getDownloadErrorReason(reason: Int): String = when (reason) {
+        DownloadManager.ERROR_CANNOT_RESUME       -> "Cannot resume download"
+        DownloadManager.ERROR_DEVICE_NOT_FOUND    -> "Storage not found"
+        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "File already exists"
+        DownloadManager.ERROR_FILE_ERROR          -> "Storage error"
+        DownloadManager.ERROR_HTTP_DATA_ERROR     -> "HTTP data error"
+        DownloadManager.ERROR_INSUFFICIENT_SPACE  -> "Not enough storage space"
+        DownloadManager.ERROR_TOO_MANY_REDIRECTS  -> "Too many redirects"
+        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "Unhandled HTTP code"
+        DownloadManager.ERROR_UNKNOWN             -> "Unknown error"
+        else                                      -> "Error code $reason"
     }
 
     // ── Install ───────────────────────────────────────────────────────────────
@@ -275,10 +351,6 @@ class UpdateChecker(private val context: Context) {
     private fun installApk(activity: Activity, apkFile: File) {
         try {
             val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // FileProvider required on Android 7+
-                // Make sure your manifest has:
-                //   <provider android:name="androidx.core.content.FileProvider"
-                //     android:authorities="${applicationId}.provider" .../>
                 FileProvider.getUriForFile(
                     activity,
                     "${activity.packageName}.provider",
