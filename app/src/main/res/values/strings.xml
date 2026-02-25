@@ -99,9 +99,14 @@
     <string name="commitment_180_days">180 Days - Full Recovery</string>
     <string name="commitment_365_days">365 Days - Life Transformation</string>
 
+
     <string name="commitment_warning">⚠️ Cannot be changed or cancelled during commitment</string>
     <string name="btn_lock_me_in">Lock Me In</string>
+    <!--
+        ADD THESE TO YOUR res/values/strings.xml
+    -->
 
+   =
     <!-- ============================================ -->
     <!-- DASHBOARD                                    -->
     <!-- ============================================ -->
@@ -193,4 +198,11 @@
     <string name="notification_violation_detected">Security violation detected!</string>
     <string name="notification_blocked_app_attempt">Blocked app launch attempt</string>
 
+
+    <string name="accessibility_service_label">Taqwa Fortress — Pairing Assistant</string>
+    <string name="accessibility_service_description">
+    Taqwa Fortress uses this permission to automatically read the pairing code
+    from the Wireless Debugging popup, so you never have to type it manually.
+    It only reads text from the Android Settings pairing dialog.
+    </string>
 </resources>

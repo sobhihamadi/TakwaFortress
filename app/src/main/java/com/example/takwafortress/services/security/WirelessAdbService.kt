@@ -8,11 +8,14 @@ import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.PrivateKey
@@ -31,9 +34,7 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
         fun getInstance(): TakwaAdbManager {
             try {
                 Log.d(TAG, "getInstance() called")
-
                 ensureBouncyCastleRegistered()
-
                 if (INSTANCE == null) {
                     synchronized(this) {
                         if (INSTANCE == null) {
@@ -43,9 +44,7 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
                         }
                     }
                 }
-
                 return INSTANCE!!
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ FATAL: getInstance() failed", e)
                 throw RuntimeException("Failed to get TakwaAdbManager instance: ${e.message}", e)
@@ -55,7 +54,6 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
         private fun ensureBouncyCastleRegistered() {
             try {
                 val existingProvider = Security.getProvider("BC")
-
                 if (existingProvider == null) {
                     Log.d(TAG, "Registering BouncyCastle provider...")
                     Security.insertProviderAt(BouncyCastleProvider(), 1)
@@ -63,14 +61,8 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
                 } else {
                     Log.d(TAG, "✅ BouncyCastle already registered: ${existingProvider.name} v${existingProvider.version}")
                 }
-
-                val bcProvider = Security.getProvider("BC")
-                if (bcProvider == null) {
-                    throw RuntimeException("BouncyCastle registration failed!")
-                }
-
+                Security.getProvider("BC") ?: throw RuntimeException("BouncyCastle registration failed!")
                 Log.d(TAG, "═══════════════════════════════════════")
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to register BouncyCastle", e)
                 throw RuntimeException("BouncyCastle registration failed: ${e.message}", e)
@@ -87,10 +79,7 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
             Log.d(TAG, "   Android version: ${android.os.Build.VERSION.SDK_INT}")
             Log.d(TAG, "   Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
 
-            val bcProvider = Security.getProvider("BC")
-            if (bcProvider == null) {
-                throw RuntimeException("BouncyCastle provider not available!")
-            }
+            Security.getProvider("BC") ?: throw RuntimeException("BouncyCastle provider not available!")
             Log.d(TAG, "✅ BC provider confirmed")
 
             setApi(android.os.Build.VERSION.SDK_INT)
@@ -110,12 +99,8 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
             Log.d(TAG, "✅ Certificate generated")
 
             Log.d(TAG, "🎉 TakwaAdbManager initialization complete!")
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ FATAL: Initialization failed", e)
-            Log.e(TAG, "   Exception type: ${e.javaClass.name}")
-            Log.e(TAG, "   Message: ${e.message}")
-            Log.e(TAG, "   Stack trace:", e)
             throw RuntimeException("TakwaAdbManager init failed: ${e.message}", e)
         }
     }
@@ -124,68 +109,45 @@ class TakwaAdbManager private constructor() : AbsAdbConnectionManager() {
     override fun getCertificate(): Certificate = mCertificate
     override fun getDeviceName(): String = "TakwaFortress"
 
-    /**
-     * ✅ FINAL FIX: Use Android's native crypto for EVERYTHING
-     * BouncyCastle jdk18on is incomplete on Android
-     */
     private fun generateCert(keyPair: java.security.KeyPair): Certificate {
         try {
             Log.d(TAG, "🔐 Starting certificate generation...")
-
             val subject = X500Name("CN=TakwaFortress,O=TakwaFortress,C=US")
             val serial = BigInteger.valueOf(System.currentTimeMillis())
             val notBefore = Date()
             val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
-
             Log.d(TAG, "   Subject: $subject")
             Log.d(TAG, "   Serial: $serial")
-
-            // ✅ STEP 1: Create signer using Android's default provider
             Log.d(TAG, "   Creating content signer...")
-            val signer = JcaContentSignerBuilder("SHA256withRSA")
-                .build(keyPair.private)  // No setProvider() - uses Android's default
+            val signer = JcaContentSignerBuilder("SHA256withRSA").build(keyPair.private)
             Log.d(TAG, "   ✅ Content signer created")
-
-            // ✅ STEP 2: Build certificate holder
             Log.d(TAG, "   Building certificate holder...")
             val certHolder = JcaX509v3CertificateBuilder(
-                subject,
-                serial,
-                notBefore,
-                notAfter,
-                subject,
-                keyPair.public
+                subject, serial, notBefore, notAfter, subject, keyPair.public
             ).build(signer)
             Log.d(TAG, "   ✅ Certificate holder created")
-
-            // ✅ STEP 3: Convert to X509 using Android's default provider (NOT BC)
             Log.d(TAG, "   Converting to X509 certificate...")
-            val cert = JcaX509CertificateConverter()
-                // DON'T call setProvider() - let it use Android's default X.509 support
-                .getCertificate(certHolder)
+            val cert = JcaX509CertificateConverter().getCertificate(certHolder)
             Log.d(TAG, "   ✅ X509 conversion successful")
-
             Log.d(TAG, "✅ Certificate generated successfully!")
             Log.d(TAG, "   Type: ${cert.type}")
             Log.d(TAG, "   Issuer: ${cert.issuerX500Principal.name}")
             Log.d(TAG, "   Valid from: ${cert.notBefore}")
             Log.d(TAG, "   Valid until: ${cert.notAfter}")
-
             return cert
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Certificate generation failed", e)
-            Log.e(TAG, "   Exception: ${e.javaClass.simpleName}")
-            Log.e(TAG, "   Message: ${e.message}")
             throw RuntimeException("Cert generation failed: ${e.message}", e)
         }
     }
 }
-// WirelessAdbService remains exactly the same as before
+
 class WirelessAdbService(private val context: Context) {
 
     companion object {
         private const val TAG = "WirelessAdbService"
+        // How long to wait for dpm output before giving up
+        private const val COMMAND_TIMEOUT_MS = 10_000L
     }
 
     suspend fun pairDevice(pairingCode: String, pairingPort: Int): WirelessAdbResult =
@@ -223,32 +185,18 @@ class WirelessAdbService(private val context: Context) {
                                 "Try generating a new code."
                     )
                 }
-
             } catch (e: Exception) {
                 Log.e(TAG, "❌ PAIRING EXCEPTION", e)
-                Log.e(TAG, "Exception type: ${e.javaClass.name}")
-                Log.e(TAG, "Message: ${e.message}")
-                Log.e(TAG, "═══════════════════════════════════════")
-
                 val errorMsg = buildString {
-                    append("❌ Pairing failed\n\n")
-                    append("Error: ${e.message}\n\n")
-
-                    if (e.message?.contains("algorithm", ignoreCase = true) == true) {
-                        append("This is a crypto library issue.\n")
-                        append("Try restarting the app.\n\n")
-                    } else if (e.message?.contains("timeout", ignoreCase = true) == true) {
-                        append("Connection timeout.\n")
-                        append("Make sure Wireless Debugging is ON.\n\n")
-                    } else if (e.message?.contains("refused", ignoreCase = true) == true) {
-                        append("Connection refused.\n")
-                        append("Check the port number.\n\n")
+                    append("❌ Pairing failed\n\nError: ${e.message}\n\n")
+                    when {
+                        e.message?.contains("timeout", ignoreCase = true) == true ->
+                            append("Connection timeout.\nMake sure Wireless Debugging is ON.\n\n")
+                        e.message?.contains("refused", ignoreCase = true) == true ->
+                            append("Connection refused.\nCheck the port number.\n\n")
                     }
-
-                    append("Technical details:\n")
-                    append(e.stackTraceToString().take(500))
+                    append("Technical details:\n${e.stackTraceToString().take(500)}")
                 }
-
                 WirelessAdbResult.Failed(errorMsg)
             }
         }
@@ -269,11 +217,14 @@ class WirelessAdbService(private val context: Context) {
                 val command = "dpm set-device-owner com.example.takwafortress/.receivers.DeviceAdminReceiver"
                 Log.d(TAG, "Executing: $command")
 
-                val output = manager.openStream("shell:$command").use { stream: AdbStream ->
-                    stream.openInputStream().bufferedReader().readText()
-                }
+                // ── KEY FIX ──────────────────────────────────────────────────
+                // readText() blocks forever because the ADB shell stream never
+                // sends EOF. Instead, read line-by-line with a timeout.
+                // The dpm command always emits exactly one line of output then stops.
+                val output = readShellOutput(manager, command)
+                // ─────────────────────────────────────────────────────────────
 
-                Log.d(TAG, "Command output: $output")
+                Log.d(TAG, "Command output: '$output'")
                 Log.d(TAG, "═══════════════════════════════════════")
 
                 when {
@@ -281,12 +232,27 @@ class WirelessAdbService(private val context: Context) {
                         Log.d(TAG, "✅ DEVICE OWNER ACTIVATED!")
                         WirelessAdbResult.Success
                     }
-
+                    output.contains("already", ignoreCase = true) -> {
+                        Log.d(TAG, "✅ Device Owner already set")
+                        WirelessAdbResult.Success
+                    }
                     output.contains("account", ignoreCase = true) -> {
                         Log.w(TAG, "❌ ACCOUNTS STILL EXIST")
                         WirelessAdbResult.AccountsExist
                     }
-
+                    output.isBlank() -> {
+                        // Timed out reading — but dpm may have succeeded anyway.
+                        // Check via DevicePolicyManager directly.
+                        Log.w(TAG, "⚠️ No output received (timeout). Checking DPM directly...")
+                        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                                as android.app.admin.DevicePolicyManager
+                        if (dpm.isDeviceOwnerApp(context.packageName)) {
+                            Log.d(TAG, "✅ DPM confirms Device Owner is active!")
+                            WirelessAdbResult.Success
+                        } else {
+                            WirelessAdbResult.Failed("Command produced no output. Please try again.")
+                        }
+                    }
                     else -> {
                         Log.w(TAG, "❌ UNEXPECTED OUTPUT")
                         WirelessAdbResult.Failed("Activation failed:\n\n$output")
@@ -296,9 +262,78 @@ class WirelessAdbService(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "❌ CONNECTION/COMMAND EXCEPTION", e)
                 Log.d(TAG, "═══════════════════════════════════════")
-                WirelessAdbResult.Failed("Error: ${e.message}")
+
+                // Even if we got an exception, the dpm command may have run.
+                // Check directly before reporting failure.
+                return@withContext try {
+                    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                            as android.app.admin.DevicePolicyManager
+                    if (dpm.isDeviceOwnerApp(context.packageName)) {
+                        Log.d(TAG, "✅ Exception but DPM confirms Device Owner is active!")
+                        WirelessAdbResult.Success
+                    } else {
+                        WirelessAdbResult.Failed("Error: ${e.message}")
+                    }
+                } catch (_: Exception) {
+                    WirelessAdbResult.Failed("Error: ${e.message}")
+                }
             }
         }
+
+    /**
+     * Reads shell command output line by line with a per-line timeout.
+     *
+     * Why not readText(): The ADB shell stream never closes — readText()
+     * blocks forever waiting for EOF that never comes.
+     *
+     * Strategy:
+     * 1. Read lines one at a time with a short timeout between each.
+     * 2. Stop as soon as we see a recognisable result line.
+     * 3. Fall back to a blank string if nothing arrives within the timeout.
+     */
+    private suspend fun readShellOutput(
+        manager: TakwaAdbManager,
+        command: String,
+        timeoutMs: Long = COMMAND_TIMEOUT_MS
+    ): String = withContext(Dispatchers.IO) {
+        val stream: AdbStream = manager.openStream("shell:$command")
+        val output = StringBuilder()
+
+        try {
+            val result = withTimeoutOrNull(timeoutMs) {
+                val reader = BufferedReader(InputStreamReader(stream.openInputStream()))
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val trimmed = line!!.trim()
+                    if (trimmed.isNotEmpty()) {
+                        Log.d(TAG, "Shell line: $trimmed")
+                        output.append(trimmed).append("\n")
+
+                        // dpm always outputs one definitive line — stop reading
+                        // as soon as we see it so we don't hang waiting for EOF
+                        if (trimmed.contains("Success", ignoreCase = true) ||
+                            trimmed.contains("Error", ignoreCase = true) ||
+                            trimmed.contains("already", ignoreCase = true) ||
+                            trimmed.contains("account", ignoreCase = true) ||
+                            trimmed.contains("exception", ignoreCase = true)) {
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (result == null) {
+                Log.w(TAG, "⚠️ Shell read timed out after ${timeoutMs}ms")
+            }
+
+        } catch (e: Exception) {
+            Log.w(TAG, "Shell read interrupted: ${e.message}")
+        } finally {
+            try { stream.close() } catch (_: Exception) {}
+        }
+
+        output.toString().trim()
+    }
 
     fun getPairingInstructions(): String = """
         🛡️ Wireless ADB Activation:

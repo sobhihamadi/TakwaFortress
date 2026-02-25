@@ -98,47 +98,29 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
         viewModelScope.launch {
             try {
                 Log.d(TAG, "═══════════════════════════════════════")
-                Log.d(TAG, "WIRELESS ADB ACTIVATION STARTED")
-                Log.d(TAG, "═══════════════════════════════════════")
-                Log.d(TAG, "Code: ${pairingCode.take(2)}****")
-                Log.d(TAG, "Port: $pairingPort")
+                Log.d(TAG, "WIRELESS ADB ACTIVATION STARTED (background)")
+                Log.d(TAG, "Code: ${pairingCode.take(2)}****  Port: $pairingPort")
 
-                // ── Validation ───────────────────────────────────────────────
+                // ── Validation ──────────────────────────────────────────────
                 if (pairingCode.length != 6 || !pairingCode.all { it.isDigit() }) {
-                    _setupState.postValue(
-                        DeviceOwnerSetupState.Error(
-                            "❌ Invalid code\n\nMust be exactly 6 digits.\nCurrent: '$pairingCode' (${pairingCode.length} chars)"
-                        )
-                    )
+                    _setupState.postValue(DeviceOwnerSetupState.Error(
+                        "❌ Invalid code — must be exactly 6 digits. Got: '$pairingCode'"
+                    ))
                     return@launch
                 }
 
                 val port = pairingPort.toIntOrNull()
-                if (port == null) {
-                    _setupState.postValue(
-                        DeviceOwnerSetupState.Error("❌ Invalid port\n\nPort must be a number.")
-                    )
+                if (port == null || port !in 1024..65535) {
+                    _setupState.postValue(DeviceOwnerSetupState.Error(
+                        "❌ Invalid port: $pairingPort"
+                    ))
                     return@launch
                 }
 
-                if (port !in 30000..50000) {
-                    _setupState.postValue(
-                        DeviceOwnerSetupState.Error(
-                            "❌ Invalid port range\n\nPort should be 30000-50000.\nCurrent: $port"
-                        )
-                    )
-                    return@launch
-                }
-
-                Log.d(TAG, "✅ Validation passed")
-
-                // ── Step 1: Pair ──────────────────────────────────────────────
-                Log.d(TAG, "Starting pairing...")
-                _setupState.postValue(
-                    DeviceOwnerSetupState.Activating(
-                        "Step 1/2 — Pairing\n\nCode: ${pairingCode.take(2)}****\nPort: $port"
-                    )
-                )
+                // ── Step 1: Pair (runs fully in background) ─────────────────
+                // We do NOT post Activating state here so the UI stays quiet
+                // and the user stays on the Settings popup screen undisturbed.
+                Log.d(TAG, "Starting silent background pairing…")
 
                 val pairResult = wirelessAdbService.pairDevice(pairingCode, port)
 
@@ -149,79 +131,69 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
                         return@launch
                     }
                     is WirelessAdbResult.PairingSuccessNeedConnection -> {
-                        Log.d(TAG, "✅ Pairing successful, proceeding to connect...")
+                        Log.d(TAG, "✅ Pairing successful, connecting…")
                     }
                     else -> {
-                        Log.e(TAG, "❌ Unexpected pairing result: $pairResult")
                         _setupState.postValue(DeviceOwnerSetupState.Error("Unexpected pairing result"))
                         return@launch
                     }
                 }
 
-                // ── Step 2: Connect + Execute ─────────────────────────────────
-                Log.d(TAG, "Starting connection...")
-                _setupState.postValue(
-                    DeviceOwnerSetupState.Activating(
-                        "Step 2/2 — Connecting\n\nExecuting dpm command..."
-                    )
-                )
+                // ── Step 2: Connect + set Device Owner ──────────────────────
+                // Still silent — user is still on the Settings screen
+                Log.d(TAG, "Connecting and executing dpm command…")
 
                 val execResult = wirelessAdbService.connectAndSetDeviceOwner()
 
                 when (execResult) {
                     is WirelessAdbResult.Success -> {
-                        Log.d(TAG, "✅ ACTIVATION SUCCESSFUL!")
-                        Log.d(TAG, "═══════════════════════════════════════")
-                        // ✅ Save hasDeviceOwner = true to Firestore
+                        Log.d(TAG, "✅ DEVICE OWNER ACTIVATED!")
                         saveHasDeviceOwnerToFirestore()
+                        // NOW we surface — bring app forward with success
                         _setupState.postValue(DeviceOwnerSetupState.Success)
                     }
 
                     is WirelessAdbResult.AccountsExist -> {
-                        Log.w(TAG, "❌ Accounts exist")
-                        _setupState.postValue(
-                            DeviceOwnerSetupState.Error(
-                                "❌ Accounts still exist\n\n" +
-                                        "Remove ALL accounts first:\n" +
-                                        "1. Settings → Accounts\n" +
-                                        "2. Remove each account\n" +
-                                        "3. Come back and try again"
-                            )
-                        )
+                        _setupState.postValue(DeviceOwnerSetupState.Error(
+                            "❌ Accounts still exist\n\n" +
+                                    "Remove ALL accounts first:\n" +
+                                    "Settings → Accounts → Remove each one\n" +
+                                    "Then come back and tap the button again"
+                        ))
                     }
 
                     is WirelessAdbResult.Failed -> {
                         val reason = execResult.reason
-
-                        // ✅ FIX: "already set" means Device Owner is already active → treat as success
                         if (reason.contains("already", ignoreCase = true)) {
-                            Log.d(TAG, "✅ Device Owner already set — treating as SUCCESS")
-                            Log.d(TAG, "═══════════════════════════════════════")
+                            Log.d(TAG, "✅ Device Owner already set — treating as success")
                             saveHasDeviceOwnerToFirestore()
                             _setupState.postValue(DeviceOwnerSetupState.Success)
                         } else {
-                            Log.e(TAG, "❌ Execution failed: $reason")
-                            Log.d(TAG, "═══════════════════════════════════════")
                             _setupState.postValue(DeviceOwnerSetupState.Error(reason))
                         }
                     }
 
-                    else -> {
-                        Log.e(TAG, "❌ Unexpected execution result: $execResult")
-                        _setupState.postValue(DeviceOwnerSetupState.Error("Unexpected result"))
-                    }
+                    else -> _setupState.postValue(DeviceOwnerSetupState.Error("Unexpected result"))
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ FATAL: Activation crashed", e)
-                _setupState.postValue(
-                    DeviceOwnerSetupState.Error(
-                        "❌ Activation crashed\n\nError: ${e.message}\n\n" +
-                                e.stackTraceToString().take(500)
-                    )
-                )
+                Log.e(TAG, "❌ Activation crashed: ${e.message}", e)
+                _setupState.postValue(DeviceOwnerSetupState.Error(
+                    "❌ Activation crashed\n\nError: ${e.message}"
+                ))
             }
         }
+    }
+
+    fun onActivationSuccessFromService() {
+        viewModelScope.launch {
+            saveHasDeviceOwnerToFirestore()
+            _setupState.postValue(DeviceOwnerSetupState.Success)
+        }
+    }
+
+    fun onActivationErrorFromService(error: String) {
+        _setupState.postValue(DeviceOwnerSetupState.Error(error))
     }
 
     /**

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.takwafortress">
+    package="com.example.takwafortress"
+    >
 
     <!-- Network Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -172,8 +173,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- ✅ FIXED: was ".receivers.BootReceiver" — class doesn't exist.
-             Correct class name is BootCompletedReceiver. -->
         <receiver
             android:name=".receivers.BootCompletedReceiver"
             android:exported="true"
@@ -206,6 +205,22 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="parental_control" />
+        </service>
+
+        <!-- ============================================ -->
+        <!-- ACCESSIBILITY SERVICE                        -->
+        <!-- ============================================ -->
+        <service
+            android:name=".services.accessibility.PairingCodeAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
         </service>
 
     </application>
