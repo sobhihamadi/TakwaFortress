@@ -1,49 +1,114 @@
 package com.example.takwafortress.ui.activities
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import com.example.takwafortress.R
 import com.example.takwafortress.model.enums.ActivationMethod
+import com.example.takwafortress.services.core.DeviceOwnerService
+import com.example.takwafortress.services.security.NotificationReplyReceiver
 import com.example.takwafortress.ui.viewmodels.DeviceOwnerSetupViewModel
 import com.example.takwafortress.ui.viewmodels.DeviceOwnerSetupState
 
 class DeviceOwnerSetupActivity : AppCompatActivity() {
 
     private lateinit var viewModel: DeviceOwnerSetupViewModel
+    private lateinit var deviceOwnerService: DeviceOwnerService
 
     private lateinit var deviceBrandText      : TextView
     private lateinit var activationMethodText : TextView
     private lateinit var instructionsText     : TextView
     private lateinit var stepIndicatorText    : TextView
-    private lateinit var inputGroup           : android.widget.LinearLayout
-    private lateinit var pairingCodeInput     : EditText
-    private lateinit var pairingPortInput     : EditText
     private lateinit var openSettingsButton   : Button
     private lateinit var activateButton       : Button
     private lateinit var progressBar          : ProgressBar
     private lateinit var statusText           : TextView
 
+    // Prevents showing the success dialog twice if both onResume and the observer fire
+    private var successHandled = false
+
+    private val adbResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val success = intent.getBooleanExtra(NotificationReplyReceiver.EXTRA_SUCCESS, false)
+            val error   = intent.getStringExtra(NotificationReplyReceiver.EXTRA_ERROR_MESSAGE) ?: ""
+            viewModel.receiveAdbResult(success, error)
+        }
+    }
+
+    // ── Notification permission launcher ─────────────────────────────────────
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                // Permission granted — start discovery normally
+                viewModel.startDiscovery()
+            } else {
+                // User denied — show rationale explaining why it's critical
+                showNotificationPermissionRationaleDialog()
+            }
+        }
+
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_device_owner_setup)
 
         viewModel = ViewModelProvider(this)[DeviceOwnerSetupViewModel::class.java]
+        deviceOwnerService = DeviceOwnerService(this)
 
         initViews()
         setupObservers()
         setupListeners()
 
         viewModel.checkDeviceOwnerStatus()
+
+        val filter = IntentFilter(NotificationReplyReceiver.ACTION_ADB_RESULT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(adbResultReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(adbResultReceiver, filter)
+        }
+
+        // ✅ Request notification permission before starting discovery
+        checkAndRequestNotificationPermission()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // ✅ THE KEY FIX:
+        // The ADB command runs in the background while the user is in Settings.
+        // LiveData observers are PAUSED while the Activity is stopped/in background,
+        // so the Success state posts but never reaches the UI.
+        // When the user comes back (onResume), we directly check DevicePolicyManager —
+        // the ground truth — and show the dialog immediately if Device Owner is active.
+        if (!successHandled && deviceOwnerService.isDeviceOwner()) {
+            successHandled = true
+            viewModel.stopDiscovery()
+            showSuccessDialog()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { unregisterReceiver(adbResultReceiver) }
+        viewModel.stopDiscovery()
     }
 
     private fun initViews() {
@@ -51,9 +116,6 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
         activationMethodText = findViewById(R.id.activationMethodText)
         instructionsText     = findViewById(R.id.instructionsText)
         stepIndicatorText    = findViewById(R.id.stepIndicatorText)
-        inputGroup           = findViewById(R.id.inputGroup)
-        pairingCodeInput     = findViewById(R.id.pairingCodeInput)
-        pairingPortInput     = findViewById(R.id.pairingPortInput)
         openSettingsButton   = findViewById(R.id.openSettingsButton)
         activateButton       = findViewById(R.id.activateButton)
         progressBar          = findViewById(R.id.progressBar)
@@ -80,101 +142,87 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
                     showLoading(false)
                     updateInstructions(state.method)
                 }
+                is DeviceOwnerSetupState.WaitingForPairing -> {
+                    showLoading(false)
+                    instructionsText.text  = state.instructions
+                    stepIndicatorText.text = "⏳ Waiting for Wireless Debugging popup…"
+                    statusText.text        = "Open Settings → Wireless Debugging → Pair with code"
+                }
                 is DeviceOwnerSetupState.Activating -> {
                     showLoading(true)
                     statusText.text = state.message
                 }
                 is DeviceOwnerSetupState.Success -> {
-                    showLoading(false)
-                    showSuccessDialog()
+                    // Fires if Activity happened to be in foreground when result arrived
+                    if (!successHandled) {
+                        successHandled = true
+                        showLoading(false)
+                        viewModel.stopDiscovery()
+                        showSuccessDialog()
+                    }
                 }
                 is DeviceOwnerSetupState.AlreadyActive -> {
                     showLoading(false)
-                    // Device Owner already set — let MainViewModel decide where to go
                     navigateToMain()
                 }
                 is DeviceOwnerSetupState.Error -> {
                     showLoading(false)
                     showErrorDialog(state.message)
+                    viewModel.startDiscovery()
                 }
             }
         }
     }
 
     private fun setupListeners() {
-        openSettingsButton.setOnClickListener {
-            openDeveloperOptions()
-        }
-
+        openSettingsButton.setOnClickListener { openDeveloperOptions() }
         activateButton.setOnClickListener {
-            val method = viewModel.activationMethod.value ?: return@setOnClickListener
-
-            when (method) {
-                ActivationMethod.KNOX -> {
-                    viewModel.activateViaKnox()
-                }
-                ActivationMethod.WIRELESS_ADB -> {
-                    val code = pairingCodeInput.text.toString().trim()
-                    val port = pairingPortInput.text.toString().trim()
-
-                    if (code.isEmpty()) {
-                        pairingCodeInput.error = "Enter the 6-digit pairing code"
-                        return@setOnClickListener
-                    }
-                    if (port.isEmpty()) {
-                        pairingPortInput.error = "Enter the port number"
-                        return@setOnClickListener
-                    }
-
-                    viewModel.activateViaWirelessAdb(code, port)
-                }
-                else -> Toast.makeText(this, "Unsupported method", Toast.LENGTH_SHORT).show()
+            if (viewModel.activationMethod.value == ActivationMethod.KNOX) {
+                viewModel.activateViaKnox()
             }
         }
     }
 
     private fun showKnoxFlow() {
-        inputGroup.isVisible         = false
         openSettingsButton.isVisible = false
+        activateButton.isVisible     = true
         activateButton.text          = "Activate via Knox"
         stepIndicatorText.text       = "Step 1 / 1 — Tap to activate"
     }
 
     private fun showWirelessAdbFlow() {
-        inputGroup.isVisible         = true
         openSettingsButton.isVisible = true
-        activateButton.text          = "Activate Device Owner"
-        stepIndicatorText.text       = "Enter code & port from the popup, then tap Activate"
+        activateButton.isVisible     = false
+        stepIndicatorText.text       = "Tap the button below to open Developer Options"
     }
 
     private fun updateInstructions(method: ActivationMethod) {
         instructionsText.text = when (method) {
             ActivationMethod.KNOX -> """
-                🎉 Easy Knox Activation (10 seconds)
+                🎉 Easy Knox Activation
 
                 1. Tap "Activate via Knox" below
                 2. Accept the system prompt
                 3. Done!
 
-                ⚠️ Important: Remove all Google / Samsung accounts first
+                ⚠️ Remove all Google / Samsung accounts first.
             """.trimIndent()
 
             ActivationMethod.WIRELESS_ADB -> """
-                📱 Wireless ADB Setup (≈ 1 minute)
+                📱 Wireless ADB — Automatic Setup
 
-                1. Open Developer Options (button below)
+                ⚠️ FIRST: Remove ALL accounts
+                   Settings → Accounts → Remove all
+
+                Then:
+                1. Tap "Open Developer Options" below
                 2. Turn ON "Wireless Debugging"
                 3. Tap "Pair device with pairing code"
-                4. A popup appears — copy the 6-digit code AND the port
-                5. Paste them into the fields below and tap Activate
-
-                We handle the connection automatically after pairing.
-
-                ⚠️ Critical: Remove ALL accounts first!
-                   Settings → Accounts → Remove all
+                4. Pull down notifications — enter the 6-digit code there
+                5. Done! Port is detected automatically.
             """.trimIndent()
 
-            else -> "Unknown method"
+            else -> ""
         }
     }
 
@@ -183,28 +231,24 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
             Toast.makeText(
                 this,
-                "Enable Wireless Debugging, tap \"Pair device with pairing code\", " +
-                        "then come back and enter the code & port.",
+                "Enable Wireless Debugging, then tap \"Pair device with pairing code\".",
                 Toast.LENGTH_LONG
             ).show()
         } catch (e: Exception) {
-            Toast.makeText(
-                this,
-                "Could not open Developer Options. Please navigate there manually.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Please navigate to Developer Options manually.", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun showLoading(loading: Boolean) {
         progressBar.isVisible        = loading
-        activateButton.isEnabled     = !loading
-        pairingCodeInput.isEnabled   = !loading
-        pairingPortInput.isEnabled   = !loading
         openSettingsButton.isEnabled = !loading
+        activateButton.isEnabled     = !loading
     }
 
     private fun showSuccessDialog() {
+        // Also save to Firestore in case the background broadcast path missed it
+        viewModel.saveDeviceOwnerToFirestore()
+
         AlertDialog.Builder(this)
             .setTitle("🎉 Device Owner Activated!")
             .setMessage(
@@ -214,13 +258,7 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
                         "✅ Uninstall blocked\n\n" +
                         "Tap Continue to proceed."
             )
-            .setPositiveButton("Continue") { _, _ ->
-                // ✅ FIX: Go to MainActivity — let MainViewModel routing decide the destination.
-                // If commitment is already set → Dashboard.
-                // If commitment not set yet → CommitmentSelection.
-                // This replaces the old hardcoded navigateToCommitmentSelection().
-                navigateToMain()
-            }
+            .setPositiveButton("Continue") { _, _ -> navigateToMain() }
             .setCancelable(false)
             .show()
     }
@@ -228,21 +266,11 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
     private fun showErrorDialog(message: String) {
         val troubleshooting = when {
             message.contains("account", ignoreCase = true) ->
-                "\n\n📋 FIX:\n" +
-                        "1. Go to Settings → Accounts\n" +
-                        "2. Remove ALL accounts (Google, Samsung, Work)\n" +
-                        "3. Return here and tap Activate again\n" +
-                        "4. You can re-add accounts after activation"
-
-            message.contains("adb", ignoreCase = true) ||
-                    message.contains("connection", ignoreCase = true) ||
-                    message.contains("pair", ignoreCase = true) ->
-                "\n\n📋 FIX:\n" +
-                        "1. Make sure Wireless Debugging is still ON\n" +
-                        "2. Double-check the 6-digit code (it expires quickly)\n" +
-                        "3. Double-check the port number from the popup\n" +
-                        "4. Try tapping \"Pair device with pairing code\" again for a fresh code"
-
+                "\n\n📋 FIX:\n1. Settings → Accounts\n2. Remove ALL accounts\n3. Come back — notification will reappear automatically"
+            message.contains("pair",  ignoreCase = true) ||
+                    message.contains("code",  ignoreCase = true) ||
+                    message.contains("port",  ignoreCase = true) ->
+                "\n\n📋 FIX:\n1. Close and re-open \"Pair with code\" in Settings\n2. A new notification will appear automatically\n3. Enter the NEW 6-digit code"
             else -> ""
         }
 
@@ -256,17 +284,92 @@ class DeviceOwnerSetupActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * Goes to MainActivity and clears the back stack.
-     * MainViewModel.resolveRoute() will then decide:
-     *   - commitmentEndDate set and valid  → FortressDashboardActivity
-     *   - commitmentEndDate null           → CommitmentSelectionActivity
-     */
     private fun navigateToMain() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        startActivity(intent)
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+        )
         finish()
+    }
+
+    // ── Notification Permission ───────────────────────────────────────────────
+
+    /**
+     * Entry point — checks current permission state and acts accordingly.
+     * On Android < 13 notifications are granted at install, so we skip straight
+     * to startDiscovery().
+     */
+    private fun checkAndRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                // ✅ Already granted — proceed immediately
+                ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    viewModel.startDiscovery()
+                }
+
+                // ⚠️ User denied before — show our explanation first, then re-ask
+                shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
+                    AlertDialog.Builder(this)
+                        .setTitle("🔔 Notifications Required")
+                        .setMessage(
+                            "Taqwa Fortress needs notification access to:\n\n" +
+                                    "• Show the ADB pairing code prompt\n" +
+                                    "• Alert you when device protection is ready\n\n" +
+                                    "Without this, the automatic setup cannot work."
+                        )
+                        .setPositiveButton("Allow") { _, _ ->
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        .setNegativeButton("Not Now") { _, _ ->
+                            // Still try to proceed but warn the user
+                            showNotificationPermissionRationaleDialog()
+                        }
+                        .setCancelable(false)
+                        .show()
+                }
+
+                // 🆕 First time — show system permission popup directly
+                else -> {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        } else {
+            // Android 12 and below — permission granted automatically at install
+            viewModel.startDiscovery()
+        }
+    }
+
+    /**
+     * Shown when the user has permanently denied notifications.
+     * Gives them a path to fix it via App Settings, or lets them continue
+     * anyway (discovery will run but the pairing notification won't appear).
+     */
+    private fun showNotificationPermissionRationaleDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Notifications Blocked")
+            .setMessage(
+                "Without notifications, the ADB pairing prompt won't appear " +
+                        "and the automatic setup will not work.\n\n" +
+                        "To fix this, go to:\n" +
+                        "Settings → Apps → Taqwa Fortress → Notifications → Enable"
+            )
+            .setPositiveButton("Open App Settings") { _, _ ->
+                startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    }
+                )
+                // Start discovery anyway — user may enable it in settings and come back
+                viewModel.startDiscovery()
+            }
+            .setNegativeButton("Continue Anyway") { _, _ ->
+                // Discovery runs but notification won't show — user is aware
+                viewModel.startDiscovery()
+            }
+            .setCancelable(false)
+            .show()
     }
 }

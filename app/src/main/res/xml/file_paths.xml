@@ -1,6 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="external_files" path="." />
-    <cache-path name="cache" path="." />
-    <files-path name="files" path="." />
+<!--
+    Save this file as:
+    app/src/main/res/xml/file_provider_paths.xml
+
+    Then add this to your AndroidManifest.xml inside <application>:
+
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.provider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+            android:name="android.support.FILE_PROVIDER_PATHS"
+            android:resource="@xml/file_provider_paths" />
+    </provider>
+
+    Also add this permission to your manifest (needed to install APKs on Android 8+):
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+-->
+<paths>
+    <external-files-path
+        name="apk_downloads"
+        path="Download/" />
 </paths>

@@ -15,72 +15,101 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var viewModel: MainViewModel
 
+    // Track if we already ran routing so onResume doesn't double-navigate
+    private var routingStarted = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // ✅ ViewModel initialized BEFORE anything uses it
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
-        // ✅ Observe destinations BEFORE resolveRoute is called
         viewModel.destination.observe(this) { destination ->
             when (destination) {
-                is RouteDestination.Welcome -> {
-                    navigateTo(WelcomeActivity::class.java)
-                }
-                is RouteDestination.CommitmentSelection -> {
+                is RouteDestination.Welcome -> navigateTo(WelcomeActivity::class.java)
+
+                is RouteDestination.CommitmentSelection ->
                     navigateTo(CommitmentSelectionActivity::class.java)
-                }
-                is RouteDestination.DeviceOwnerSetup -> {
+
+                is RouteDestination.DeviceOwnerSetup ->
                     navigateTo(DeviceOwnerSetupActivity::class.java)
-                }
-                is RouteDestination.Dashboard -> {
+
+                is RouteDestination.Dashboard ->
                     navigateTo(FortressDashboardActivity::class.java)
-                }
+
                 is RouteDestination.ExpiredDashboard -> {
-                    val intent = Intent(this, FortressDashboardActivity::class.java).apply {
-                        putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
-                    }
-                    startActivity(intent)
+                    startActivity(
+                        Intent(this, FortressDashboardActivity::class.java).apply {
+                            putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
+                        }
+                    )
                     finish()
                 }
+
                 is RouteDestination.CommitmentComplete -> {
-                    val intent = Intent(this, FortressDashboardActivity::class.java).apply {
-                        putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
-                    }
-                    startActivity(intent)
+                    startActivity(
+                        Intent(this, FortressDashboardActivity::class.java).apply {
+                            putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
+                        }
+                    )
                     finish()
                 }
+
                 is RouteDestination.TrialExpired -> {
-                    val intent = Intent(this, FortressDashboardActivity::class.java).apply {
-                        putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
-                    }
-                    startActivity(intent)
+                    startActivity(
+                        Intent(this, FortressDashboardActivity::class.java).apply {
+                            putExtra(FortressDashboardActivity.EXTRA_EXPIRED, true)
+                        }
+                    )
                     finish()
                 }
-                is RouteDestination.SubscriptionExpired -> {
+
+                is RouteDestination.SubscriptionExpired ->
                     navigateTo(SubscriptionExpiredActivity::class.java)
-                }
+
                 is RouteDestination.UnauthorizedDevice -> {
-                    val intent = Intent(this, UnauthorizedDeviceActivity::class.java).apply {
-                        putExtra("CURRENT_DEVICE_ID", destination.currentDeviceId)
-                        putExtra("STORED_DEVICE_ID", destination.storedDeviceId)
-                    }
-                    startActivity(intent)
+                    startActivity(
+                        Intent(this, UnauthorizedDeviceActivity::class.java).apply {
+                            putExtra("CURRENT_DEVICE_ID", destination.currentDeviceId)
+                            putExtra("STORED_DEVICE_ID", destination.storedDeviceId)
+                        }
+                    )
                     finish()
                 }
             }
         }
 
-        // ✅ Check for update first, then route — single call only
+        startUpdateCheckThenRoute()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // ✅ If the user went to the browser/file manager to download the APK
+        // and came back WITHOUT installing, re-run the update check so the
+        // dialog reappears and they can't bypass the update.
+        // But only if we haven't already navigated away.
+        if (routingStarted && !isFinishing) {
+            startUpdateCheckThenRoute()
+        }
+    }
+
+    private fun startUpdateCheckThenRoute() {
+        routingStarted = true
         lifecycleScope.launch {
             val checker = UpdateChecker(this@MainActivity)
-            val update = checker.checkForUpdate()
+            val update  = checker.checkForUpdate()
+
             if (update != null) {
+                // ✅ Show the update dialog.
+                // We do NOT call resolveRoute() here — the user must update first.
+                // When they install the new APK the app restarts fresh.
                 checker.showUpdateDialog(this@MainActivity, update)
-                return@launch
+                // Don't return — do NOT navigate while update is pending
+            } else {
+                // No update needed — proceed with normal routing
+                viewModel.clearCache()   // clear cache so routing reads fresh Firestore data
+                viewModel.resolveRoute()
             }
-            viewModel.resolveRoute()
         }
     }
 
