@@ -15,9 +15,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var viewModel: MainViewModel
 
-    // ✅ FIX 1: Track state properly to prevent double dialog
-    private var updateCheckDone = false
-    private var isUpdatePending = false
+    private var isCheckInProgress = false
+    private var isUpdatePending   = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,36 +79,40 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // ✅ FIX 1: Only run on first onCreate, never on resume
-        if (savedInstanceState == null) {
-            startUpdateCheckThenRoute()
-        }
+        startUpdateCheckThenRoute()
     }
 
     override fun onResume() {
         super.onResume()
-        // ✅ FIX 1: Only re-check if user came back from installer WITHOUT installing
-        // (update was pending but app is still running = they cancelled the install)
-        // Do NOT re-check if this is a normal resume or first launch
-        if (updateCheckDone && isUpdatePending && !isFinishing) {
+        // Only re-trigger if user came back after opening installer but cancelled
+        if (isUpdatePending && !isFinishing) {
             isUpdatePending = false
             startUpdateCheckThenRoute()
         }
     }
 
     private fun startUpdateCheckThenRoute() {
+        // ✅ Hard guard — if a check is already running, do nothing
+        if (isCheckInProgress) return
+        isCheckInProgress = true
+
         lifecycleScope.launch {
-            val checker = UpdateChecker(this@MainActivity)
-            val update  = checker.checkForUpdate()
+            try {
+                val checker = UpdateChecker(this@MainActivity)
+                val update  = checker.checkForUpdate()
 
-            updateCheckDone = true
-
-            if (update != null) {
-                // ✅ Mark update as pending so onResume can re-show if user cancels install
-                isUpdatePending = true
-                checker.showUpdateDialog(this@MainActivity, update)
-            } else {
-                isUpdatePending = false
+                if (update != null) {
+                    isUpdatePending   = true
+                    isCheckInProgress = false   // allow re-check after installer returns
+                    checker.showUpdateDialog(this@MainActivity, update)
+                } else {
+                    isUpdatePending   = false
+                    isCheckInProgress = false
+                    viewModel.clearCache()
+                    viewModel.resolveRoute()
+                }
+            } catch (e: Exception) {
+                isCheckInProgress = false
                 viewModel.clearCache()
                 viewModel.resolveRoute()
             }
