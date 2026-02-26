@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+<paths>
+    <!--
+        ✅ This is what fixes:
+        "Failed to find configured root that contains
+         /storage/emulated/0/Android/data/com.example.takwafortress/files/Download/takwa_update.apk"
 
-</PreferenceScreen>
+        external-files-path maps to getExternalFilesDir() which is exactly
+        where UpdateChecker saves the APK.
+    -->
+    <external-files-path
+        name="external_files"
+        path="." />
+</paths>

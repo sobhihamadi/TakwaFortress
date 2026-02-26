@@ -15,8 +15,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var viewModel: MainViewModel
 
-    // Track if we already ran routing so onResume doesn't double-navigate
-    private var routingStarted = false
+    // ✅ FIX 1: Track state properly to prevent double dialog
+    private var updateCheckDone = false
+    private var isUpdatePending = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,35 +80,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        startUpdateCheckThenRoute()
+        // ✅ FIX 1: Only run on first onCreate, never on resume
+        if (savedInstanceState == null) {
+            startUpdateCheckThenRoute()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // ✅ If the user went to the browser/file manager to download the APK
-        // and came back WITHOUT installing, re-run the update check so the
-        // dialog reappears and they can't bypass the update.
-        // But only if we haven't already navigated away.
-        if (routingStarted && !isFinishing) {
+        // ✅ FIX 1: Only re-check if user came back from installer WITHOUT installing
+        // (update was pending but app is still running = they cancelled the install)
+        // Do NOT re-check if this is a normal resume or first launch
+        if (updateCheckDone && isUpdatePending && !isFinishing) {
+            isUpdatePending = false
             startUpdateCheckThenRoute()
         }
     }
 
     private fun startUpdateCheckThenRoute() {
-        routingStarted = true
         lifecycleScope.launch {
             val checker = UpdateChecker(this@MainActivity)
             val update  = checker.checkForUpdate()
 
+            updateCheckDone = true
+
             if (update != null) {
-                // ✅ Show the update dialog.
-                // We do NOT call resolveRoute() here — the user must update first.
-                // When they install the new APK the app restarts fresh.
+                // ✅ Mark update as pending so onResume can re-show if user cancels install
+                isUpdatePending = true
                 checker.showUpdateDialog(this@MainActivity, update)
-                // Don't return — do NOT navigate while update is pending
             } else {
-                // No update needed — proceed with normal routing
-                viewModel.clearCache()   // clear cache so routing reads fresh Firestore data
+                isUpdatePending = false
+                viewModel.clearCache()
                 viewModel.resolveRoute()
             }
         }
