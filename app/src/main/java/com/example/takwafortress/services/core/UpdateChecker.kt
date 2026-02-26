@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import android.content.Intent
+import com.example.takwafortress.BuildConfig
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +45,9 @@ class UpdateChecker(private val context: Context) {
     // ── Version check ─────────────────────────────────────────────────────────
 
     suspend fun checkForUpdate(): VersionInfo? {
+
         return try {
+            if (BuildConfig.DEBUG) return null
             Log.d(TAG, "Checking for update... current=${getCurrentVersionCode()}")
 
             val doc = withTimeoutOrNull(10_000) {

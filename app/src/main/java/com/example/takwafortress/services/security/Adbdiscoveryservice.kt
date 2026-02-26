@@ -108,6 +108,7 @@ class AdbDiscoveryService : Service() {
             }
         })
     }
+    private var isDiscovering = false  // ← ADD THIS
 
     // ── Service lifecycle ────────────────────────────────────────────────────
 
@@ -120,15 +121,20 @@ class AdbDiscoveryService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_FOREGROUND, buildForegroundNotification())
 
+        if (!isDiscovering) {
+            isDiscovering = true
         nsdManager.discoverServices(SVC_PAIRING, NsdManager.PROTOCOL_DNS_SD, pairingDiscoveryListener)
         nsdManager.discoverServices(SVC_CONNECT, NsdManager.PROTOCOL_DNS_SD, connectDiscoveryListener)
-
-        Log.d(TAG, "AdbDiscoveryService started, listening for mDNS broadcasts")
-        return START_STICKY
+        } else {
+            Log.d(TAG, "AdbDiscoveryService started, listening for mDNS broadcasts")
+        }
+            return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        isDiscovering = false  // ← RESET on destroy
+
         runCatching { nsdManager.stopServiceDiscovery(pairingDiscoveryListener) }
         runCatching { nsdManager.stopServiceDiscovery(connectDiscoveryListener) }
         Log.d(TAG, "AdbDiscoveryService stopped")

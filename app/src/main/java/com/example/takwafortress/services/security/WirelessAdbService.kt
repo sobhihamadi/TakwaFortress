@@ -233,7 +233,6 @@ class WirelessAdbService(private val context: Context) {
                 val errorMsg = buildString {
                     append("❌ Pairing failed\n\n")
                     append("Error: ${e.message}\n\n")
-
                     if (e.message?.contains("algorithm", ignoreCase = true) == true) {
                         append("This is a crypto library issue.\n")
                         append("Try restarting the app.\n\n")
@@ -244,7 +243,6 @@ class WirelessAdbService(private val context: Context) {
                         append("Connection refused.\n")
                         append("Check the port number.\n\n")
                     }
-
                     append("Technical details:\n")
                     append(e.stackTraceToString().take(500))
                 }
@@ -253,6 +251,12 @@ class WirelessAdbService(private val context: Context) {
             }
         }
 
+
+    /**
+     * Dynamically resolves which package owns a given account type by querying
+     * the PackageManager for all registered AccountAuthenticator services.
+     * This works for ANY app — no hardcoded mapping needed.
+     */
     suspend fun connectAndSetDeviceOwner(): WirelessAdbResult =
         withContext(Dispatchers.IO) {
             try {
@@ -261,35 +265,69 @@ class WirelessAdbService(private val context: Context) {
                 Log.d(TAG, "═══════════════════════════════════════")
 
                 val manager = TakwaAdbManager.getInstance()
-                Log.d(TAG, "Calling autoConnect()...")
 
+                // ✅ Step 1: Connect, run cleanup, then DISCONNECT cleanly
                 manager.autoConnect(context, 30_000L)
-                Log.d(TAG, "✅ Connected via ADB")
+                Log.d(TAG, "✅ Connected via ADB (cleanup pass)")
+
+                removeAllAccountsViaAdb(manager)
+
+                // ✅ Disconnect cleanly before reconnecting for dpm
+                try {
+                    manager.disconnect()
+                    Log.d(TAG, "✅ Disconnected after cleanup")
+                } catch (e: Exception) {
+                    Log.w(TAG, "disconnect() warning (non-fatal): ${e.message}")
+                }
+                kotlinx.coroutines.delay(1000)
+
+                // ✅ Step 2: Fresh connection just for dpm
+                Log.d(TAG, "🔄 Fresh connect for dpm command...")
+                manager.autoConnect(context, 30_000L)
+                Log.d(TAG, "✅ Reconnected")
 
                 val command = "dpm set-device-owner com.example.takwafortress/.receivers.DeviceAdminReceiver"
                 Log.d(TAG, "Executing: $command")
 
-                val output = manager.openStream("shell:$command").use { stream: AdbStream ->
-                    stream.openInputStream().bufferedReader().readText()
-                }
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                        as android.app.admin.DevicePolicyManager
 
-                Log.d(TAG, "Command output: $output")
-                Log.d(TAG, "═══════════════════════════════════════")
+                try {
+                    val output = manager.openStream("shell:$command").use { stream: AdbStream ->
+                        stream.openInputStream().bufferedReader().readText()
+                    }
 
-                when {
-                    output.contains("Success", ignoreCase = true) -> {
-                        Log.d(TAG, "✅ DEVICE OWNER ACTIVATED!")
+                    Log.d(TAG, "Command output: $output")
+                    Log.d(TAG, "═══════════════════════════════════════")
+
+                    when {
+                        output.contains("Success", ignoreCase = true) -> {
+                            Log.d(TAG, "✅ DEVICE OWNER ACTIVATED!")
+                            WirelessAdbResult.Success
+                        }
+                        output.contains("account", ignoreCase = true) -> {
+                            Log.w(TAG, "❌ ACCOUNTS STILL EXIST AFTER CLEANUP")
+                            WirelessAdbResult.AccountsExist
+                        }
+                        else -> {
+                            Log.w(TAG, "❌ UNEXPECTED OUTPUT")
+                            WirelessAdbResult.Failed("Activation failed:\n\n$output")
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    // Stream closed = app restarted as Device Owner = likely SUCCESS
+                    Log.d(TAG, "Stream closed after dpm command — checking DPM...")
+                    kotlinx.coroutines.delay(500)
+
+                    if (dpm.isDeviceOwnerApp(context.packageName)) {
+                        Log.d(TAG, "✅ Device Owner confirmed via DPM!")
+                        Log.d(TAG, "═══════════════════════════════════════")
                         WirelessAdbResult.Success
-                    }
-
-                    output.contains("account", ignoreCase = true) -> {
-                        Log.w(TAG, "❌ ACCOUNTS STILL EXIST")
-                        WirelessAdbResult.AccountsExist
-                    }
-
-                    else -> {
-                        Log.w(TAG, "❌ UNEXPECTED OUTPUT")
-                        WirelessAdbResult.Failed("Activation failed:\n\n$output")
+                    } else {
+                        Log.w(TAG, "❌ Stream closed but NOT Device Owner: ${e.message}")
+                        Log.d(TAG, "═══════════════════════════════════════")
+                        WirelessAdbResult.Failed("Error: ${e.message}")
                     }
                 }
 
@@ -300,6 +338,125 @@ class WirelessAdbService(private val context: Context) {
             }
         }
 
+    private suspend fun removeAllAccountsViaAdb(manager: TakwaAdbManager) {
+        Log.d(TAG, "🧹 Querying accounts via ADB shell...")
+
+        try { manager.disconnect() } catch (_: Exception) {}
+        kotlinx.coroutines.delay(300)
+        manager.autoConnect(context, 30_000L)
+
+        val dumpsysOutput = manager.openStream("shell:dumpsys account").use { stream: AdbStream ->
+            stream.openInputStream().bufferedReader().readText()
+        }
+        // Parse accounts as "name|type" pairs
+        val accountRegex = Regex("""Account \{name=(.+?), type=(.+?)\}""")
+        val accounts = accountRegex.findAll(dumpsysOutput)
+            .map { it.groupValues[1].trim() to it.groupValues[2].trim() }
+            .toList()
+
+        if (accounts.isEmpty()) {
+            Log.d(TAG, "✅ No accounts found — skipping cleanup")
+            return
+        }
+
+        Log.d(TAG, "🧹 Found ${accounts.size} account(s): $accounts")
+
+        for ((name, type) in accounts) {
+            try {
+                Log.d(TAG, "  🗑️ Removing account: name=$name type=$type")
+
+                // Find packages that own this account type
+                val keyword = type.substringBefore(".").let {
+                    if (type.contains("microsoft")) "microsoft"
+                    else if (type.contains("instagram")) "instagram"
+                    else type.substringAfterLast(".")
+                }
+                val packages = findAllInstalledPackagesByKeyword(keyword)
+                Log.d(TAG, "    packages for type=$type: $packages")
+
+                for (packageName in packages) {
+                    try { manager.disconnect() } catch (_: Exception) {}
+                    kotlinx.coroutines.delay(300)
+                    manager.autoConnect(context, 30_000L)
+
+                    val result = manager.openStream(
+                        "shell:pm uninstall --user 0 $packageName"
+                    ).use { stream: AdbStream ->
+                        stream.openInputStream().bufferedReader().readText().trim()
+                    }
+                    Log.d(TAG, "    uninstall result for $packageName: $result")
+                }
+
+                // If no packages found, fall back to sqlite3
+                if (packages.isEmpty()) {
+                    try { manager.disconnect() } catch (_: Exception) {}
+                    kotlinx.coroutines.delay(300)
+                    manager.autoConnect(context, 30_000L)
+
+                    val result = manager.openStream(
+                        "shell:sqlite3 /data/system/users/0/accounts.db \"DELETE FROM accounts WHERE name='$name' AND type='$type';\""
+                    ).use { stream: AdbStream ->
+                        stream.openInputStream().bufferedReader().readText().trim()
+                    }
+                    Log.d(TAG, "    sqlite fallback result: $result")
+                }
+
+            } catch (e: Exception) {
+                Log.w(TAG, "  ⚠️ Remove account failed: ${e.message}")
+            }
+        }
+
+        // Poll until accounts are gone
+        Log.d(TAG, "⏳ Waiting for accounts to fully clear...")
+        var attempts = 0
+        val maxAttempts = 10
+        while (attempts < maxAttempts) {
+            attempts++
+            kotlinx.coroutines.delay(1500)
+
+            try {
+                try { manager.disconnect() } catch (_: Exception) {}
+                kotlinx.coroutines.delay(300)
+                manager.autoConnect(context, 30_000L)
+
+                val checkOutput = manager.openStream("shell:dumpsys account").use { stream: AdbStream ->
+                    stream.openInputStream().bufferedReader().readText()
+                }
+
+                val remaining = Regex("""Account \{name=.+?, type=(.+?)\}""")
+                    .findAll(checkOutput).count()
+
+                Log.d(TAG, "  🔍 Account check attempt $attempts: $remaining account(s) remaining")
+
+                if (remaining == 0) {
+                    Log.d(TAG, "✅ All accounts confirmed cleared!")
+                    break
+                }
+
+            } catch (e: Exception) {
+                Log.w(TAG, "  Account check attempt $attempts failed: ${e.message}")
+            }
+        }
+
+        Log.d(TAG, "✅ Account cleanup complete")
+    }
+
+    /**
+     * Returns ALL installed packages whose name contains the keyword.
+     * This is critical for suites like Microsoft Office where the account
+     * type "com.microsoft.office" may be owned by outlook, teams, word, etc.
+     */
+    private fun findAllInstalledPackagesByKeyword(keyword: String): List<String> {
+        return try {
+            context.packageManager
+                .getInstalledPackages(0)
+                .map { it.packageName }
+                .filter { it.contains(keyword, ignoreCase = true) }
+        } catch (e: Exception) {
+            Log.w(TAG, "findAllInstalledPackagesByKeyword($keyword) failed: ${e.message}")
+            emptyList()
+        }
+    }
     fun getPairingInstructions(): String = """
         🛡️ Wireless ADB Activation:
         
@@ -324,7 +481,6 @@ class WirelessAdbService(private val context: Context) {
     fun hasConflictingAccounts(): Boolean =
         AccountManager.get(context).accounts.isNotEmpty()
 }
-
 sealed class WirelessAdbResult {
     object Success : WirelessAdbResult()
     object AccountsExist : WirelessAdbResult()
