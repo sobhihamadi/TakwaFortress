@@ -9,117 +9,130 @@
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#1A1A2E"
+        android:background="#161B27"
         android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:padding="16dp">
 
-            <!-- Header -->
+            <!-- ── Header ────────────────────────────────────────── -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TAKWA FORTRESS"
+                android:textColor="#7A8BA0"
+                android:textSize="10sp"
+                android:letterSpacing="0.25"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="4dp" />
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="🛡️ Choose Your Plan"
-                android:textColor="#FFFFFF"
-                android:textSize="28sp"
+                android:textColor="#EFF3F8"
+                android:textSize="20sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="6dp" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Select a plan to activate Taqwa Fortress"
-                android:textColor="#B0B0B0"
-                android:textSize="14sp"
-                android:layout_marginBottom="32dp" />
+                android:textColor="#7A8BA0"
+                android:textSize="13sp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="28dp" />
 
-            <!-- Radio Group -->
+            <!-- ── Radio Group ────────────────────────────────────── -->
             <RadioGroup
                 android:id="@+id/planRadioGroup"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="10dp">
 
                 <RadioButton
                     android:id="@+id/planTrialRadio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="3-Day Free Trial — FREE"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#EFF3F8"
+                    android:textSize="15sp"
                     android:padding="16dp"
                     android:background="@drawable/bg_radio_button"
-                    android:layout_marginBottom="10dp"
-                    android:buttonTint="#4CAF50" />
+                    android:layout_marginBottom="8dp"
+                    android:buttonTint="#5DB88A" />
 
                 <RadioButton
                     android:id="@+id/planMonthlyRadio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="1 Month — $3.90"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#EFF3F8"
+                    android:textSize="15sp"
                     android:padding="16dp"
                     android:background="@drawable/bg_radio_button"
-                    android:layout_marginBottom="10dp"
-                    android:buttonTint="#4CAF50" />
+                    android:layout_marginBottom="8dp"
+                    android:buttonTint="#5DB88A" />
 
                 <RadioButton
                     android:id="@+id/planQuarterlyRadio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="3 Months — $9.90"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#EFF3F8"
+                    android:textSize="15sp"
                     android:padding="16dp"
                     android:background="@drawable/bg_radio_button"
-                    android:layout_marginBottom="10dp"
-                    android:buttonTint="#4CAF50" />
+                    android:layout_marginBottom="8dp"
+                    android:buttonTint="#5DB88A" />
 
                 <RadioButton
                     android:id="@+id/planBiannualRadio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="6 Months — $15.90"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#EFF3F8"
+                    android:textSize="15sp"
                     android:padding="16dp"
                     android:background="@drawable/bg_radio_button"
-                    android:layout_marginBottom="10dp"
-                    android:buttonTint="#4CAF50" />
+                    android:layout_marginBottom="8dp"
+                    android:buttonTint="#5DB88A" />
 
                 <RadioButton
                     android:id="@+id/planAnnualRadio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="1 Year — $24.90"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#EFF3F8"
+                    android:textSize="15sp"
                     android:padding="16dp"
                     android:background="@drawable/bg_radio_button"
-                    android:buttonTint="#4CAF50" />
+                    android:buttonTint="#5DB88A" />
 
             </RadioGroup>
 
-            <!-- Plan Details Card -->
+            <!-- ── Plan Details Card ──────────────────────────────── -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/bg_card"
                 android:padding="16dp"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="10dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📝 Plan Details"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
+                    android:text="📝  PLAN DETAILS"
+                    android:textColor="#7A8BA0"
+                    android:textSize="10sp"
+                    android:letterSpacing="0.12"
                     android:layout_marginBottom="10dp" />
 
                 <TextView
@@ -127,65 +140,65 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Select a plan to see details"
-                    android:textColor="#B0B0B0"
+                    android:textColor="#D4DCE8"
                     android:textSize="14sp"
-                    android:lineSpacingExtra="4dp" />
+                    android:lineSpacingExtra="5dp" />
 
             </LinearLayout>
 
-            <!-- Proceed Button -->
+            <!-- ── Primary Button ─────────────────────────────────── -->
             <Button
                 android:id="@+id/activateButton"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:text="Select a Plan"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:background="@drawable/bg_button_primary"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="14dp" />
 
-            <!-- Progress Bar -->
+            <!-- ── Progress Bar ───────────────────────────────────── -->
             <ProgressBar
                 android:id="@+id/progressBar"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:visibility="gone"
-                android:indeterminateTint="#4CAF50"
-                android:layout_marginBottom="16dp" />
+                android:indeterminateTint="#4A90D9"
+                android:layout_marginBottom="8dp" />
 
-            <!-- Status Text -->
+            <!-- ── Status Text ────────────────────────────────────── -->
             <TextView
                 android:id="@+id/statusText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Choose your plan"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textAlignment="center" />
+                android:textColor="#7A8BA0"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:layout_marginBottom="32dp" />
 
         </LinearLayout>
     </ScrollView>
 
     <!-- ============================================================ -->
-    <!-- WHOP CHECKOUT WEBVIEW OVERLAY                               -->
-    <!-- Sits on top, hidden by default, shown when payment starts   -->
+    <!-- WHOP CHECKOUT WEBVIEW OVERLAY                                -->
     <!-- ============================================================ -->
     <LinearLayout
         android:id="@+id/webViewContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#1A1A2E"
+        android:background="#161B27"
         android:visibility="gone">
 
-        <!-- Top bar with close button -->
+        <!-- Top bar -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:orientation="horizontal"
-            android:background="#16213E"
+            android:background="#1E2535"
             android:gravity="center_vertical"
             android:paddingStart="12dp"
             android:paddingEnd="12dp">
@@ -194,9 +207,9 @@
                 android:id="@+id/btnCloseWebView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="✕ Cancel"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
+                android:text="✕  Cancel"
+                android:textColor="#E05C5C"
+                android:textSize="13sp"
                 android:background="@android:color/transparent" />
 
             <TextView
@@ -204,19 +217,24 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Secure Checkout"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textColor="#EFF3F8"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:gravity="center" />
 
-            <!-- Spacer to balance the cancel button -->
+            <!-- Balance spacer -->
             <View
                 android:layout_width="80dp"
                 android:layout_height="wrap_content" />
 
         </LinearLayout>
 
-        <!-- The actual WebView -->
+        <!-- 1dp divider under top bar -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#252E3F" />
+
         <WebView
             android:id="@+id/checkoutWebView"
             android:layout_width="match_parent"

@@ -3,6 +3,8 @@ package com.example.takwafortress.ui.viewmodels
 import android.app.Application
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -95,12 +97,15 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
 
     /**
      * Stops the AdbDiscoveryService.
-     * Call this in onDestroy / when leaving the setup screen.
+     * Delayed 600ms so Android has time to finish onStartCommand + startForeground()
+     * before we stop — prevents ForegroundServiceDidNotStartInTimeException crash.
      */
     fun stopDiscovery() {
         val ctx = getApplication<Application>()
-        ctx.stopService(Intent(ctx, AdbDiscoveryService::class.java))
-        Log.d(TAG, "AdbDiscoveryService stopped")
+        Handler(Looper.getMainLooper()).postDelayed({
+            ctx.stopService(Intent(ctx, AdbDiscoveryService::class.java))
+            Log.d(TAG, "AdbDiscoveryService stopped")
+        }, 600)
     }
 
     /**
@@ -146,7 +151,6 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
 
     // ── Firestore ─────────────────────────────────────────────────────────────
 
-    // Called from Activity onResume when result arrived while in background
     fun saveDeviceOwnerToFirestore() {
         viewModelScope.launch { saveHasDeviceOwnerToFirestore() }
     }
@@ -200,13 +204,8 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
 
 sealed class DeviceOwnerSetupState {
     data class Ready(val brand: DeviceBrand, val method: ActivationMethod) : DeviceOwnerSetupState()
-
-    /** mDNS discovery running — user should open Settings */
     data class WaitingForPairing(val instructions: String) : DeviceOwnerSetupState()
-
-    /** ADB operation in progress (used for Knox or any blocking step) */
     data class Activating(val message: String) : DeviceOwnerSetupState()
-
     object Success       : DeviceOwnerSetupState()
     object AlreadyActive : DeviceOwnerSetupState()
     data class Error(val message: String) : DeviceOwnerSetupState()

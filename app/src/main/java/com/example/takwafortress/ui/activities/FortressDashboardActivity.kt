@@ -3,7 +3,6 @@ package com.example.takwafortress.ui.activities
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
@@ -11,38 +10,52 @@ import androidx.lifecycle.lifecycleScope
 import com.example.takwafortress.R
 import com.example.takwafortress.services.core.FortressClearService
 import com.example.takwafortress.ui.fragments.AppsFragment
+import com.example.takwafortress.ui.fragments.AwarenessFragment
 import com.example.takwafortress.ui.fragments.DashboardFragment
-import com.example.takwafortress.ui.fragments.DnsFragment
-import com.example.takwafortress.ui.fragments.SettingsFragment
+import com.example.takwafortress.ui.fragments.JourneyFragment
 import com.example.takwafortress.ui.viewmodels.FortressStatusViewModel
 import kotlinx.coroutines.launch
-
-private val TAB_ACTIVE   = Color.parseColor("#4CAF50")
-private val TAB_INACTIVE = Color.parseColor("#2A2A4A")
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 
 class FortressDashboardActivity : AppCompatActivity() {
 
     private lateinit var viewModel: FortressStatusViewModel
 
-    private lateinit var btnDashboard: Button
-    private lateinit var btnApps: Button
-    private lateinit var btnDns: Button
-    private lateinit var btnSettings: Button
+    // Bottom nav tab views
+    private lateinit var tabDashboard: LinearLayout
+    private lateinit var tabApps: LinearLayout
+    private lateinit var tabAwareness: LinearLayout
+    private lateinit var tabJourney: LinearLayout
+
+    private lateinit var iconDashboard: TextView
+    private lateinit var iconApps: TextView
+    private lateinit var iconAwareness: TextView
+    private lateinit var iconJourney: TextView
+
+    private lateinit var labelDashboard: TextView
+    private lateinit var labelApps: TextView
+    private lateinit var labelAwareness: TextView
+    private lateinit var labelJourney: TextView
 
     private var activeTabIndex = 0
-
-    // Prevents FortressClearService from being called twice if both
-    // startInExpiredMode and isCommitmentExpired fire in the same session.
     private var clearAlreadyTriggered = false
 
     companion object {
         const val EXTRA_EXPIRED = "extra_expired"
         private const val TAG = "FortressDashboard"
+
+        private val COLOR_BG         = Color.parseColor("#0F0F1A")
+        private val COLOR_NAV_BG     = Color.parseColor("#13131F")
+        private val COLOR_ACTIVE     = Color.parseColor("#4CAF50")
+        private val COLOR_INACTIVE   = Color.parseColor("#3A3A5C")
+        private val COLOR_NAV_BORDER = Color.parseColor("#1E1E30")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_fortress_dashboard)
 
         val startInExpiredMode = intent.getBooleanExtra(EXTRA_EXPIRED, false)
 
@@ -53,64 +66,136 @@ class FortressDashboardActivity : AppCompatActivity() {
             }
         })[FortressStatusViewModel::class.java]
 
-        btnDashboard = findViewById(R.id.btnTabDashboard)
-        btnApps      = findViewById(R.id.btnTabApps)
-        btnDns       = findViewById(R.id.btnTabDns)
-        btnSettings  = findViewById(R.id.btnTabSettings)
-
-        btnDashboard.setOnClickListener { showTab(0) }
-        btnApps.setOnClickListener      { showTab(1) }
-        btnDns.setOnClickListener       { showTab(2) }
-        btnSettings.setOnClickListener  { showTab(3) }
+        buildLayout(startInExpiredMode)
 
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
                 .add(R.id.fragmentContainer, DashboardFragment.newInstance(startInExpiredMode), "dashboard")
                 .add(R.id.fragmentContainer, AppsFragment.newInstance(startInExpiredMode),      "apps")
-                .add(R.id.fragmentContainer, DnsFragment.newInstance(startInExpiredMode),        "dns")
-                .add(R.id.fragmentContainer, SettingsFragment.newInstance(startInExpiredMode),   "settings")
+                .add(R.id.fragmentContainer, AwarenessFragment.newInstance(),                   "awareness")
+                .add(R.id.fragmentContainer, JourneyFragment.newInstance(),                     "journey")
                 .commitNow()
         }
 
         showTab(0)
 
-        // ── Case 1: Plan expired while app is open ────────────────────────────
-        // The countdown in FortressStatusViewModel hits zero and posts true.
         viewModel.isCommitmentExpired.observe(this) { expired ->
             if (expired && !clearAlreadyTriggered) {
-                Log.d(TAG, "⏰ isCommitmentExpired → triggering FortressClearService")
+                Log.d(TAG, "isCommitmentExpired → triggering FortressClearService")
                 triggerClear()
             }
         }
 
-        // ── Case 2: App opened after plan already ended ───────────────────────
-        // MainViewModel routed here with EXTRA_EXPIRED = true.
         if (startInExpiredMode) {
-            Log.d(TAG, "⏰ Launched in expired mode → triggering FortressClearService")
+            Log.d(TAG, "Launched in expired mode → triggering FortressClearService")
             triggerClear()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        // Re-check expiry each time the user returns (e.g. from background).
         viewModel.loadCommitmentFromFirestore()
     }
 
     // ═══════════════════════════════════════════
-    // FORTRESS CLEAR
+    // LAYOUT
     // ═══════════════════════════════════════════
 
-    private fun triggerClear() {
-        if (clearAlreadyTriggered) return
-        clearAlreadyTriggered = true
+    private fun buildLayout(startInExpiredMode: Boolean) {
+        // Edge-to-edge so we can draw behind system bars
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
 
-        lifecycleScope.launch {
-            Log.i(TAG, "═══════════════════════════════════════")
-            Log.i(TAG, "FortressClearService starting...")
-            Log.i(TAG, "═══════════════════════════════════════")
-            val result = FortressClearService(this@FortressDashboardActivity).clearEverything()
-            Log.i(TAG, "FortressClearService result: $result")
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(COLOR_BG)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        // Fragment container fills all available space
+        val fragmentContainer = FrameLayout(this).apply {
+            id = R.id.fragmentContainer
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
+        root.addView(fragmentContainer)
+
+        // Top separator line
+        val separator = android.view.View(this).apply {
+            setBackgroundColor(COLOR_NAV_BORDER)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+            )
+        }
+        root.addView(separator)
+
+        // Bottom navigation bar — respects system gesture area
+        val navBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(COLOR_NAV_BG)
+            val bottomInset = getSystemNavigationBarHeight()
+            setPadding(0, dp(8), 0, bottomInset + dp(8))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        tabDashboard = makeNavTab("🛡️", "Fortress")
+        tabApps      = makeNavTab("📱", "Apps")
+        tabAwareness = makeNavTab("📖", "Awareness")
+        tabJourney   = makeNavTab("🗺️", "Journey")
+
+        iconDashboard  = tabDashboard.getChildAt(0) as TextView
+        labelDashboard = tabDashboard.getChildAt(1) as TextView
+        iconApps       = tabApps.getChildAt(0) as TextView
+        labelApps      = tabApps.getChildAt(1) as TextView
+        iconAwareness  = tabAwareness.getChildAt(0) as TextView
+        labelAwareness = tabAwareness.getChildAt(1) as TextView
+        iconJourney    = tabJourney.getChildAt(0) as TextView
+        labelJourney   = tabJourney.getChildAt(1) as TextView
+
+        tabDashboard.setOnClickListener { showTab(0) }
+        tabApps.setOnClickListener      { showTab(1) }
+        tabAwareness.setOnClickListener { showTab(2) }
+        tabJourney.setOnClickListener   { showTab(3) }
+
+        navBar.addView(tabDashboard)
+        navBar.addView(tabApps)
+        navBar.addView(tabAwareness)
+        navBar.addView(tabJourney)
+
+        root.addView(navBar)
+        setContentView(root)
+    }
+
+    private fun makeNavTab(icon: String, label: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
+
+            val iconView = TextView(this@FortressDashboardActivity).apply {
+                text = icon
+                textSize = 20f
+                gravity = Gravity.CENTER
+            }
+            val labelView = TextView(this@FortressDashboardActivity).apply {
+                text = label
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(COLOR_INACTIVE)
+                letterSpacing = 0.05f
+            }
+            addView(iconView)
+            addView(labelView)
         }
     }
 
@@ -124,24 +209,51 @@ class FortressDashboardActivity : AppCompatActivity() {
 
         val dashboard = fm.findFragmentByTag("dashboard") ?: return
         val apps      = fm.findFragmentByTag("apps")      ?: return
-        val dns       = fm.findFragmentByTag("dns")       ?: return
-        val settings  = fm.findFragmentByTag("settings")  ?: return
+        val awareness = fm.findFragmentByTag("awareness") ?: return
+        val journey   = fm.findFragmentByTag("journey")   ?: return
 
         fm.beginTransaction().apply {
             if (index == 0) show(dashboard) else hide(dashboard)
             if (index == 1) show(apps)      else hide(apps)
-            if (index == 2) show(dns)       else hide(dns)
-            if (index == 3) show(settings)  else hide(settings)
+            if (index == 2) show(awareness) else hide(awareness)
+            if (index == 3) show(journey)   else hide(journey)
         }.commit()
 
-        btnDashboard.setBackgroundColor(if (index == 0) TAB_ACTIVE else TAB_INACTIVE)
-        btnApps.setBackgroundColor(     if (index == 1) TAB_ACTIVE else TAB_INACTIVE)
-        btnDns.setBackgroundColor(      if (index == 2) TAB_ACTIVE else TAB_INACTIVE)
-        btnSettings.setBackgroundColor( if (index == 3) TAB_ACTIVE else TAB_INACTIVE)
+        // Update tab colors
+        val tabs = listOf(
+            Triple(tabDashboard,  iconDashboard,  labelDashboard),
+            Triple(tabApps,       iconApps,       labelApps),
+            Triple(tabAwareness,  iconAwareness,  labelAwareness),
+            Triple(tabJourney,    iconJourney,    labelJourney)
+        )
+        tabs.forEachIndexed { i, (_, _, label) ->
+            label.setTextColor(if (i == index) COLOR_ACTIVE else COLOR_INACTIVE)
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // FORTRESS CLEAR
+    // ═══════════════════════════════════════════
+
+    private fun triggerClear() {
+        if (clearAlreadyTriggered) return
+        clearAlreadyTriggered = true
+        lifecycleScope.launch {
+            Log.i(TAG, "FortressClearService starting...")
+            val result = FortressClearService(this@FortressDashboardActivity).clearEverything()
+            Log.i(TAG, "FortressClearService result: $result")
+        }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        Toast.makeText(this, "Cannot exit fortress dashboard", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Cannot exit fortress", Toast.LENGTH_SHORT).show()
     }
+
+    private fun getSystemNavigationBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
+    }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 }

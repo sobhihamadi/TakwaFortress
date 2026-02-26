@@ -1,26 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary Colors -->
-    <color name="colorPrimary">#4CAF50</color>
-    <color name="colorPrimaryDark">#2E7D32</color>
-    <color name="colorAccent">#4CAF50</color>
 
-    <!-- Background Colors -->
-    <color name="background_dark">#1A1A2E</color>
-    <color name="background_card">#2A2A3E</color>
-    <color name="background_input">#2A2A3E</color>
+    <!-- ══════════════════════════════════════════════════════════════
+         TAKWA FORTRESS — Soft Dark Palette
+         Matches DashboardFragment / AppsFragment / JourneyFragment
+         ══════════════════════════════════════════════════════════════ -->
 
-    <!-- Text Colors -->
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#B0B0B0</color>
-    <color name="text_hint">#666666</color>
+    <!-- Primary accent — soft blue -->
+    <color name="colorPrimary">#4A90D9</color>
+    <color name="colorPrimaryDark">#1A2740</color>
+    <color name="colorAccent">#4A90D9</color>
 
-    <!-- Status Colors -->
-    <color name="success">#4CAF50</color>
-    <color name="warning">#FF9800</color>
-    <color name="error">#F44336</color>
+    <!-- Backgrounds -->
+    <color name="background_dark">#161B27</color>      <!-- page / root bg -->
+    <color name="background_card">#1E2535</color>      <!-- card surface -->
+    <color name="background_input">#141929</color>     <!-- input fields -->
+    <color name="background_hero">#152238</color>      <!-- hero cards -->
 
-    <!-- Border Colors -->
-    <color name="border_light">#3A3A4E</color>
-    <color name="border_accent">#4CAF50</color>
+    <!-- Text -->
+    <color name="text_primary">#EFF3F8</color>         <!-- headings — soft white -->
+    <color name="text_secondary">#D4DCE8</color>       <!-- body copy -->
+    <color name="text_hint">#7A8BA0</color>            <!-- captions / labels -->
+
+    <!-- Accent — green (active / success) -->
+    <color name="green">#5DB88A</color>
+    <color name="green_dim">#1A3040</color>
+
+    <!-- Accent — blue (primary buttons / progress) -->
+    <color name="blue">#4A90D9</color>
+    <color name="blue_dim">#172540</color>
+
+    <!-- Status — error / inactive -->
+    <color name="error">#E05C5C</color>
+    <color name="error_dim">#2E1A1A</color>
+
+    <!-- Status — warning -->
+    <color name="warning">#D4924A</color>
+    <color name="warning_dim">#2A1E0E</color>
+
+    <!-- Borders -->
+    <color name="border_dim">#2A3347</color>           <!-- standard card border -->
+    <color name="border_top">#354059</color>           <!-- top-highlight line -->
+    <color name="border_hero">#1F3554</color>          <!-- hero card border -->
+    <color name="divider">#252E3F</color>              <!-- row dividers -->
+
 </resources>

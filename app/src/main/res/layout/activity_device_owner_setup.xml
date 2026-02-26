@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    activity_device_owner_setup.xml
-    ─────────────────────────────────
-    Field IDs that the Activity binds:
+    activity_device_owner_setup.xml — Soft Dark rebrand
+    Field IDs (unchanged):
       • deviceBrandText
       • activationMethodText
       • stepIndicatorText
       • instructionsText
       • openSettingsButton
-      • pairingCodeInput       ← 6-digit code
-      • pairingPortInput       ← port from the same popup
+      • pairingCodeInput
+      • pairingPortInput
       • activateButton
       • progressBar
       • statusText
@@ -17,14 +16,14 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1A1A2E"
+    android:background="#161B27"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="16dp">
 
         <!-- ══════════════════════════════════════════════════════════
              HEADER
@@ -32,22 +31,34 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="TAKWA FORTRESS"
+            android:textColor="#7A8BA0"
+            android:textSize="10sp"
+            android:letterSpacing="0.25"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="4dp"
+            android:layout_marginTop="24dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="🛡️ Device Owner Setup"
-            android:textColor="#FFFFFF"
-            android:textSize="28sp"
+            android:textColor="#EFF3F8"
+            android:textSize="20sp"
             android:textStyle="bold"
+            android:layout_gravity="center_horizontal"
             android:layout_marginBottom="4dp" />
 
-        <!-- Step / status hint -->
         <TextView
             android:id="@+id/stepIndicatorText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Step 1 / 3"
-            android:textColor="#4CAF50"
-            android:textSize="14sp"
+            android:textColor="#5DB88A"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:layout_marginBottom="20dp" />
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="24dp" />
 
         <!-- ══════════════════════════════════════════════════════════
              DEVICE INFO CARD
@@ -56,27 +67,37 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="#2A2A3E"
+            android:background="@drawable/bg_card"
             android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DEVICE INFO"
+                android:textColor="#7A8BA0"
+                android:textSize="10sp"
+                android:letterSpacing="0.12"
+                android:layout_marginBottom="10dp" />
 
             <TextView
                 android:id="@+id/deviceBrandText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Device: Loading…"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textColor="#EFF3F8"
+                android:textSize="15sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="4dp" />
+                android:layout_marginBottom="6dp" />
 
             <TextView
                 android:id="@+id/activationMethodText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Method: Loading…"
-                android:textColor="#4CAF50"
-                android:textSize="14sp" />
+                android:textColor="#5DB88A"
+                android:textSize="13sp" />
+
         </LinearLayout>
 
         <!-- ══════════════════════════════════════════════════════════
@@ -86,46 +107,47 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:background="#2A2A3E"
+            android:background="@drawable/bg_card"
             android:padding="16dp"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="10dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📋 Instructions"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="10dp" />
+                android:text="📋  INSTRUCTIONS"
+                android:textColor="#7A8BA0"
+                android:textSize="10sp"
+                android:letterSpacing="0.12"
+                android:layout_marginBottom="12dp" />
 
             <TextView
                 android:id="@+id/instructionsText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Instructions will appear here"
-                android:textColor="#B0B0B0"
+                android:textColor="#D4DCE8"
                 android:textSize="14sp"
-                android:lineSpacingExtra="4dp" />
+                android:lineSpacingExtra="5dp" />
+
         </LinearLayout>
 
         <!-- ══════════════════════════════════════════════════════════
-             OPEN DEVELOPER OPTIONS BUTTON   (hidden for Knox)
+             OPEN DEVELOPER OPTIONS BUTTON  (hidden for Knox)
              ══════════════════════════════════════════════════════════ -->
         <Button
             android:id="@+id/openSettingsButton"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="📱 Open Developer Options"
-            android:textColor="#FFFFFF"
+            android:layout_height="52dp"
+            android:text="📱  Open Developer Options"
+            android:textColor="#EFF3F8"
             android:textSize="14sp"
-            android:background="#3F51B5"
+            android:textStyle="bold"
+            android:background="@drawable/bg_button_secondary"
             android:visibility="gone"
-            android:layout_marginBottom="20dp" />
+            android:layout_marginBottom="10dp" />
 
         <!-- ══════════════════════════════════════════════════════════
-             INPUT GROUP  — code + port side by side
-             Both are hidden for Knox; shown for Wireless ADB.
+             INPUT GROUP — code + port  (hidden for Knox)
              ══════════════════════════════════════════════════════════ -->
         <LinearLayout
             android:id="@+id/inputGroup"
@@ -133,50 +155,51 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:visibility="gone"
-            android:layout_marginBottom="20dp">
+            android:layout_marginBottom="10dp">
 
-            <!-- 6-digit pairing code -->
             <EditText
                 android:id="@+id/pairingCodeInput"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_weight="1"
-                android:background="#2A2A3E"
+                android:background="@drawable/bg_input"
                 android:hint="6-digit code"
                 android:inputType="number"
                 android:maxLength="6"
-                android:padding="16dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#666666"
+                android:padding="14dp"
+                android:textColor="#EFF3F8"
+                android:textColorHint="#7A8BA0"
+                android:textSize="15sp"
                 android:layout_marginEnd="8dp" />
 
-            <!-- Port from the pairing popup -->
             <EditText
                 android:id="@+id/pairingPortInput"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_weight="1"
-                android:background="#2A2A3E"
+                android:background="@drawable/bg_input"
                 android:hint="Port (e.g. 37171)"
                 android:inputType="number"
-                android:padding="16dp"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#666666" />
+                android:padding="14dp"
+                android:textColor="#EFF3F8"
+                android:textColorHint="#7A8BA0"
+                android:textSize="15sp" />
+
         </LinearLayout>
 
         <!-- ══════════════════════════════════════════════════════════
-             ACTIVATE BUTTON
+             ACTIVATE BUTTON — primary solid blue
              ══════════════════════════════════════════════════════════ -->
         <Button
             android:id="@+id/activateButton"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="52dp"
             android:text="Activate Device Owner"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            android:background="#4CAF50"
-            android:layout_marginBottom="16dp" />
+            android:background="@drawable/bg_button_primary"
+            android:layout_marginBottom="14dp" />
 
         <!-- ══════════════════════════════════════════════════════════
              PROGRESS + STATUS
@@ -187,7 +210,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:visibility="gone"
-            android:indeterminateTint="#4CAF50"
+            android:indeterminateTint="#4A90D9"
             android:layout_marginBottom="8dp" />
 
         <TextView
@@ -195,9 +218,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Ready to activate"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textAlignment="center" />
+            android:textColor="#7A8BA0"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:layout_marginBottom="32dp" />
 
     </LinearLayout>
 </ScrollView>

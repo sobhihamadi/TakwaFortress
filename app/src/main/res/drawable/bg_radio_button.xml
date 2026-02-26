@@ -1,26 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- Selected state -->
-    <item android:state_checked="true">
-        <shape android:shape="rectangle">
-            <solid android:color="#2A2A3E" />
-            <corners android:radius="12dp" />
-            <stroke
-                android:width="2dp"
-                android:color="#4CAF50" />
-        </shape>
-    </item>
-
-    <!-- Unselected state -->
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#1A1A2E" />
-            <corners android:radius="12dp" />
-            <stroke
-                android:width="1dp"
-                android:color="#3A3A4E" />
-        </shape>
-    </item>
-
-</selector>
+<!-- bg_radio_button.xml — card bg with border, 10dp radius -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1E2535" />
+    <stroke android:width="1dp" android:color="#2A3347" />
+    <corners android:radius="10dp" />
+</shape>
