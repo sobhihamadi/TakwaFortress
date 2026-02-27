@@ -79,7 +79,7 @@ class AdbDiscoveryService : Service() {
             resolveService(serviceInfo, isPairing = false)
         }
 
-        override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+        override fun onServiceLost(servicdebueInfo: NsdServiceInfo) {
             connectPort = -1
         }
     }

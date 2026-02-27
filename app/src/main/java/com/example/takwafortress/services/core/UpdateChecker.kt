@@ -47,8 +47,7 @@ class UpdateChecker(private val context: Context) {
     suspend fun checkForUpdate(): VersionInfo? {
 
         return try {
-            if (BuildConfig.DEBUG) return null
-            Log.d(TAG, "Checking for update... current=${getCurrentVersionCode()}")
+
 
             val doc = withTimeoutOrNull(10_000) {
                 firestore
