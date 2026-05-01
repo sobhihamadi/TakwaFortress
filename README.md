@@ -46,7 +46,7 @@ The app targets adults seeking structured recovery from digital addiction, parti
 - Suspends apps at the OS level (greyed out, unlaunchable)
 - Sets private DNS to a content-filtering server
 - Locks Chrome into SafeSearch mode with incognito disabled
-- Blocks  uninstallation of itself
+- Blocks factory reset and uninstallation of itself
 - Enforces automatic network time to prevent "time travel" bypasses
 
 ---
@@ -469,14 +469,19 @@ EncryptedSharedPreferences.create(
 
 | Threat | Mitigation |
 |---|---|
-| Uninstall the app | `setUninstallBlocked(true)` via Device Owner |
+| Uninstall the app (via Settings) | `setUninstallBlocked(true)` via Device Owner |
 | Change system time | `setAutoTimeRequired(true)` + restriction |
-| Factory reset | `DISALLOW_FACTORY_RESET` user restriction |
-| Install a VPN app | DNS locked at system level, VPN blocked |
 | Use incognito browser | Chrome incognito disabled via managed config |
 | Use Chrome DoH to bypass DNS | `DnsOverHttpsMode = "off"` in Chrome policy |
 | Install an alternative browser | `setApplicationHidden()` for 19 browsers |
 | Enter Safe Mode | `DISALLOW_SAFE_BOOT` restriction |
+| Install a VPN app | DNS locked at system level, VPN blocked |
+
+> **Intentional Design Decisions — Factory Reset & ADB are allowed:**
+>
+> Factory reset and USB/Wireless ADB debugging are **deliberately left unrestricted**. The philosophy behind this choice is that Taqwa Fortress is a *self-accountability* tool, not a prison. Forcing a user into a locked device they cannot escape creates a hostile, trust-breaking experience — especially if they need emergency access, want to troubleshoot a device issue, or simply decide the commitment isn't for them.
+>
+> A user who factory resets is making a conscious choice. The app does not attempt to prevent that. What it does is **reset their Firestore account state** (`hasDeviceOwner = false`, `subscriptionStatus = PENDING`) so they must go through the full setup flow again — serving as a natural, low-coercion deterrent. The goal is friction through commitment design, not technical imprisonment.
 
 ---
 
