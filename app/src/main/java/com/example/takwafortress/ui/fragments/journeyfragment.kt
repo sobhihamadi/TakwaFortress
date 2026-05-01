@@ -18,22 +18,22 @@ import java.util.*
 // ══════════════════════════════════════════════════════════════════════════════
 // PALETTE — Soft Dark  (matches DashboardFragment — lifted, breathable)
 // ══════════════════════════════════════════════════════════════════════════════
-private val BG_DARK          = Color.parseColor("#161B27")   // background — warm navy, not black
-private val CARD_BG          = Color.parseColor("#1E2535")   // card surface — clear lift above bg
-private val CARD_HERO_BG     = Color.parseColor("#152238")   // hero card — deep blue-navy
-private val CARD_HERO_BORDER = Color.parseColor("#1F3554")   // hero card border
-private val BORDER_DIM       = Color.parseColor("#2A3347")   // border — visible but soft
-private val BORDER_TOP       = Color.parseColor("#354059")   // top-highlight line — blue-grey
-private val GREEN            = Color.parseColor("#5DB88A")   // active — muted teal-green
-private val GREEN_BRIGHT     = Color.parseColor("#5DB88A")   // same — one consistent green
-private val GREEN_DIM        = Color.parseColor("#1A3040")   // green pill bg — navy-tinted
-private val YELLOW           = Color.parseColor("#D4A847")   // okay mood — warmer, less neon
-private val RED_SOFT         = Color.parseColor("#E05C5C")   // hard day — matches palette red
-private val EMPTY_DAY        = Color.parseColor("#1A2030")   // heatmap empty cell
-private val TEXT_WHITE       = Color.parseColor("#EFF3F8")   // headings — soft white, not harsh
-private val TEXT_SOFT        = Color.parseColor("#D4DCE8")   // body — warm, easy to read
-private val TEXT_GREY        = Color.parseColor("#7A8BA0")   // captions — bluer, matches palette
-private val DIVIDER_CLR      = Color.parseColor("#252E3F")   // subtle divider
+private val BG_DARK          = Color.parseColor("#161B27")
+private val CARD_BG          = Color.parseColor("#1E2535")
+private val CARD_HERO_BG     = Color.parseColor("#152238")
+private val CARD_HERO_BORDER = Color.parseColor("#1F3554")
+private val BORDER_DIM       = Color.parseColor("#2A3347")
+private val BORDER_TOP       = Color.parseColor("#354059")
+private val GREEN            = Color.parseColor("#5DB88A")
+private val GREEN_BRIGHT     = Color.parseColor("#5DB88A")
+private val GREEN_DIM        = Color.parseColor("#1A3040")
+private val YELLOW           = Color.parseColor("#D4A847")
+private val RED_SOFT         = Color.parseColor("#E05C5C")
+private val EMPTY_DAY        = Color.parseColor("#1A2030")
+private val TEXT_WHITE       = Color.parseColor("#EFF3F8")
+private val TEXT_SOFT        = Color.parseColor("#D4DCE8")
+private val TEXT_GREY        = Color.parseColor("#7A8BA0")
+private val DIVIDER_CLR      = Color.parseColor("#252E3F")
 
 data class EmojiOption(val emoji: String, val label: String, val mood: Int)
 
@@ -51,6 +51,10 @@ class JourneyFragment : Fragment() {
     private val PREFS_NAME = "journey_data"
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
+    // ── Fragment-level state (survives buildUi calls) ─────────────────────────
+    private var selectedOption: EmojiOption? = null
+    private var currentRootView: View? = null
+
     companion object {
         fun newInstance() = JourneyFragment()
     }
@@ -59,7 +63,24 @@ class JourneyFragment : Fragment() {
         inflater: android.view.LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View = buildUi()
+    ): View {
+        selectedOption = null
+        currentRootView = buildUi()
+        return currentRootView!!
+    }
+
+    // ── Safe UI refresh — always checks fragment is still alive ───────────────
+    private fun refreshUi() {
+        if (!isAdded || context == null) return
+        val container = currentRootView?.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(currentRootView)
+        if (index < 0) return
+        selectedOption = null
+        val newView = buildUi()
+        container.removeViewAt(index)
+        container.addView(newView, index)
+        currentRootView = newView
+    }
 
     private fun buildUi(): View {
         val root = LinearLayout(requireContext()).apply {
@@ -118,8 +139,12 @@ class JourneyFragment : Fragment() {
             ).apply { bottomMargin = dp(16) }
         }
         labelRow.addView(View(requireContext()).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(GREEN_BRIGHT) }
-            layoutParams = LinearLayout.LayoutParams(dp(6), dp(6)).apply { rightMargin = dp(8); gravity = Gravity.CENTER_VERTICAL }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL; setColor(GREEN_BRIGHT)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(6), dp(6)).apply {
+                rightMargin = dp(8); gravity = Gravity.CENTER_VERTICAL
+            }
         })
         labelRow.addView(TextView(requireContext()).apply {
             text = "TODAY'S CHECK-IN"
@@ -128,6 +153,7 @@ class JourneyFragment : Fragment() {
         checkInCard.addView(labelRow)
 
         if (alreadyCheckedIn) {
+            // ── Already checked in: show result ──────────────────────────────
             val checkedRow = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             }
@@ -164,7 +190,9 @@ class JourneyFragment : Fragment() {
                 text = "✅  Checked in today"
                 textSize = 12f; setTextColor(GREEN_BRIGHT)
             })
+
         } else {
+            // ── Not yet checked in: show emoji picker ─────────────────────────
             checkInCard.addView(TextView(requireContext()).apply {
                 text = "How are you feeling today?"
                 textSize = 15f; setTextColor(TEXT_SOFT); setPadding(0, 0, 0, dp(16))
@@ -176,7 +204,8 @@ class JourneyFragment : Fragment() {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
-            var selectedOption: EmojiOption? = null
+
+            // selectedOption is now a Fragment-level field — not local
             val emojiButtons = mutableListOf<LinearLayout>()
 
             EMOJI_OPTIONS.forEach { option ->
@@ -185,7 +214,18 @@ class JourneyFragment : Fragment() {
                     setPadding(dp(8), dp(12), dp(8), dp(12))
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
-                        setColor(EMPTY_DAY); setStroke(dp(1), BORDER_DIM); cornerRadius = dp(10).toFloat()
+                        setColor(
+                            // Restore highlight if this option was previously selected
+                            if (selectedOption?.emoji == option.emoji) {
+                                when (option.mood) {
+                                    2    -> Color.parseColor("#1A3040")
+                                    1    -> Color.parseColor("#2A2210")
+                                    else -> Color.parseColor("#2E1A1A")
+                                }
+                            } else EMPTY_DAY
+                        )
+                        setStroke(dp(1), BORDER_DIM)
+                        cornerRadius = dp(10).toFloat()
                     }
                     layoutParams = GridLayout.LayoutParams().apply {
                         width = 0; height = GridLayout.LayoutParams.WRAP_CONTENT
@@ -201,16 +241,22 @@ class JourneyFragment : Fragment() {
                     gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
                 })
                 emojiButtons.add(btn)
+
                 btn.setOnClickListener {
+                    // Guard: fragment must still be attached
+                    if (!isAdded || context == null) return@setOnClickListener
+
                     selectedOption = option
                     emojiButtons.forEach { b ->
                         (b.background as? GradientDrawable)?.setColor(EMPTY_DAY)
                     }
-                    (btn.background as? GradientDrawable)?.setColor(when (option.mood) {
-                        2 -> Color.parseColor("#1A3040")   // green-navy tint
-                        1 -> Color.parseColor("#2A2210")   // warm amber tint
-                        else -> Color.parseColor("#2E1A1A") // muted red tint
-                    })
+                    (btn.background as? GradientDrawable)?.setColor(
+                        when (option.mood) {
+                            2    -> Color.parseColor("#1A3040")
+                            1    -> Color.parseColor("#2A2210")
+                            else -> Color.parseColor("#2E1A1A")
+                        }
+                    )
                 }
                 emojiGrid.addView(btn)
             }
@@ -232,7 +278,6 @@ class JourneyFragment : Fragment() {
             }
             checkInCard.addView(noteInput)
 
-            // Primary save button — solid blue, matches Dashboard
             val saveBtn = Button(requireContext()).apply {
                 text = "Save Today's Check-in"
                 textSize = 14f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
@@ -245,19 +290,19 @@ class JourneyFragment : Fragment() {
                     LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
                 ).apply { topMargin = dp(12) }
             }
+
             saveBtn.setOnClickListener {
+                // Guard: fragment must still be attached before doing anything
+                if (!isAdded || context == null) return@setOnClickListener
+
                 val opt = selectedOption ?: run {
                     Toast.makeText(requireContext(), "Please select how you're feeling", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 saveDayData(today, opt, noteInput.text.toString().trim())
-                val parent = view?.parent as? ViewGroup
-                if (parent != null) {
-                    val newView = buildUi()
-                    val index = parent.indexOfChild(view)
-                    parent.removeViewAt(index)
-                    parent.addView(newView, index)
-                }
+
+                // Use safe refreshUi() instead of direct view-hierarchy manipulation
+                refreshUi()
             }
             checkInCard.addView(saveBtn)
         }
@@ -296,8 +341,12 @@ class JourneyFragment : Fragment() {
             Pair(TEXT_GREY,    "No entry")
         ).forEach { (dotColor, label) ->
             legendRow.addView(View(requireContext()).apply {
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(dotColor) }
-                layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(5); gravity = Gravity.CENTER_VERTICAL }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(dotColor)
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply {
+                    rightMargin = dp(5); gravity = Gravity.CENTER_VERTICAL
+                }
             })
             legendRow.addView(TextView(requireContext()).apply {
                 text = label; textSize = 10f; setTextColor(TEXT_GREY); setPadding(0, 0, dp(14), 0)
@@ -328,7 +377,9 @@ class JourneyFragment : Fragment() {
 
         val weeksContainer = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         repeat(13) {
             val weekCol = LinearLayout(requireContext()).apply {
@@ -375,13 +426,17 @@ class JourneyFragment : Fragment() {
                 if (dayData != null) {
                     val tapDayStr = dayStr
                     cell.setOnClickListener {
+                        // Guard: fragment must still be attached
+                        if (!isAdded || context == null) return@setOnClickListener
                         val emoji = dayData.optString("emoji", "")
                         val label = dayData.optString("label", "")
                         val note  = dayData.optString("note", "")
-                        Toast.makeText(requireContext(),
+                        Toast.makeText(
+                            requireContext(),
                             if (note.isEmpty()) "$emoji  $label  ·  $tapDayStr"
                             else "$emoji  $label\n\"$note\"\n$tapDayStr",
-                            Toast.LENGTH_LONG).show()
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
                 weekCol.addView(cell)
@@ -406,7 +461,9 @@ class JourneyFragment : Fragment() {
 
         val statsRow = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
         listOf(
             Triple("${allData.size}",  "Check-ins",  TEXT_SOFT),
@@ -419,10 +476,12 @@ class JourneyFragment : Fragment() {
                 background = cardDrawable(Color.parseColor("#171F2E"), BORDER_DIM)
             }
             block.addView(TextView(requireContext()).apply {
-                text = value; textSize = 28f; setTextColor(color); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+                text = value; textSize = 28f; setTextColor(color)
+                gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
             })
             block.addView(TextView(requireContext()).apply {
-                text = label; textSize = 10f; setTextColor(TEXT_GREY); gravity = Gravity.CENTER; letterSpacing = 0.05f
+                text = label; textSize = 10f; setTextColor(TEXT_GREY)
+                gravity = Gravity.CENTER; letterSpacing = 0.05f
                 setPadding(0, dp(3), 0, 0)
             })
             val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)

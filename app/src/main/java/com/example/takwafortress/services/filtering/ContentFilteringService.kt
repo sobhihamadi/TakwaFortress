@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
 import com.example.takwafortress.receivers.DeviceAdminReceiver
 import com.example.takwafortress.services.core.DeviceOwnerService
@@ -16,18 +17,20 @@ import kotlinx.coroutines.withContext
 /**
  * Comprehensive Content Filtering Service
  *
- * Implements 3-layer protection:
- * 1. DNS Filtering (CleanBrowsing)
- * 2. Chrome Managed Configuration (SafeSearch, no incognito)
- * 3. Browser Blocking (only Chrome allowed)
+ * Implements 4-layer protection:
+ * 1. DNS Filtering          (CleanBrowsing)
+ * 2. Chrome Managed Config  (SafeSearch, no incognito, no DoH)
+ * 3. Browser Blocking       (only Chrome allowed)
+ * 4. Keyword Detection      (Accessibility Service monitors Chrome address bar)
  */
 class ContentFilteringService(private val context: Context) {
 
     companion object {
-        private const val TAG = "ContentFiltering"
-        const val CHROME_PACKAGE = "com.android.chrome"
+        private const val TAG            = "ContentFiltering"
+        const val CHROME_PACKAGE         = "com.android.chrome"
+        private const val A11Y_SERVICE   =
+            "com.example.takwafortress/com.example.takwafortress.services.filtering.KeywordAccessibilityService"
 
-        // List of browsers to block (allow ONLY Chrome)
         private val BLOCKED_BROWSERS = setOf(
             "org.mozilla.firefox",
             "com.opera.browser",
@@ -37,12 +40,12 @@ class ContentFilteringService(private val context: Context) {
             "com.duckduckgo.mobile.android",
             "org.mozilla.focus",
             "com.vivaldi.browser",
-            "com.sec.android.app.sbrowser", // Samsung Internet
+            "com.sec.android.app.sbrowser",
             "com.UCMobile.intl",
             "com.kiwibrowser.browser",
-            "com.jamal_nasser.browser", // Privacy Browser
-            "us.spotco.fennec_dos", // Fennec
-            "org.torproject.torbrowser", // Tor Browser
+            "com.jamal_nasser.browser",
+            "us.spotco.fennec_dos",
+            "org.torproject.torbrowser",
             "com.ghostery.android.ghostery",
             "com.ecosia.android",
             "com.cloudmosa.puffinFree",
@@ -51,12 +54,12 @@ class ContentFilteringService(private val context: Context) {
         )
     }
 
-    private val deviceOwnerService = DeviceOwnerService(context)
+    private val deviceOwnerService  = DeviceOwnerService(context)
     private val devicePolicyManager = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-    private val adminComponent = ComponentName(context, DeviceAdminReceiver::class.java)
+    private val adminComponent      = ComponentName(context, DeviceAdminReceiver::class.java)
 
     // ═══════════════════════════════════════════════════════════════════
-    // MASTER ACTIVATION - Sets up ALL 3 layers
+    // MASTER ACTIVATION — all 4 layers
     // ═══════════════════════════════════════════════════════════════════
 
     suspend fun activateFullProtection(): ContentFilterResult {
@@ -66,43 +69,51 @@ class ContentFilteringService(private val context: Context) {
 
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "🛡️ Activating full content protection...")
-
-                val results = mutableListOf<String>()
+                Log.d(TAG, "🛡️ Activating full content protection (4 layers)…")
+                val results      = mutableListOf<String>()
                 var allSucceeded = true
 
-                // LAYER 1: DNS Filtering
-                Log.d(TAG, "Layer 1: Setting up DNS filtering...")
-                val dnsResult = setupDnsFiltering()
-                if (dnsResult) {
+                // ── LAYER 1: DNS ──────────────────────────────────────────────
+                Log.d(TAG, "Layer 1: DNS filtering…")
+                if (setupDnsFiltering()) {
                     results.add("✅ DNS Filtering: Active (CleanBrowsing)")
                 } else {
                     results.add("⚠️ DNS Filtering: Failed")
                     allSucceeded = false
                 }
 
-                // LAYER 2: Chrome Management
-                Log.d(TAG, "Layer 2: Configuring Chrome...")
-                val chromeResult = configureManagedChrome()
-                if (chromeResult) {
+                // ── LAYER 2: Chrome managed config ────────────────────────────
+                Log.d(TAG, "Layer 2: Chrome configuration…")
+                if (configureManagedChrome()) {
                     results.add("✅ Chrome Management: Active")
                 } else {
                     results.add("⚠️ Chrome Management: Failed")
                     allSucceeded = false
                 }
 
-                // LAYER 3: Block Other Browsers
-                Log.d(TAG, "Layer 3: Blocking alternative browsers...")
+                // ── LAYER 3: Block other browsers ─────────────────────────────
+                Log.d(TAG, "Layer 3: Blocking alternative browsers…")
                 val blockResult = blockOtherBrowsers()
                 results.add("✅ Browser Blocking: ${blockResult.blocked} browsers blocked")
 
-                // BONUS: Disable Chrome's built-in DNS-over-HTTPS
-                Log.d(TAG, "Bonus: Disabling Chrome DoH...")
+                // Disable Chrome's built-in DNS-over-HTTPS
                 disableChromeDoH()
                 results.add("✅ Chrome DoH: Disabled")
 
-                Log.d(TAG, "🎉 Content protection activated!")
+                // ── LAYER 4: Keyword detection (Accessibility Service) ─────────
+                Log.d(TAG, "Layer 4: Enabling keyword detection…")
+                if (enableKeywordDetectionService()) {
+                    results.add("✅ Keyword Detection: Active")
+                    // Seed default keywords on first activation
+                    BlockedKeywordsManager(context).let { mgr ->
+                        Log.d(TAG, "  Keyword list: ${mgr.count()} words loaded")
+                    }
+                } else {
+                    results.add("⚠️ Keyword Detection: Could not auto-enable (user may need to enable in Accessibility Settings)")
+                    // Not a hard failure — the other 3 layers are still active
+                }
 
+                Log.d(TAG, "🎉 Content protection activation complete!")
                 ContentFilterResult.Success(results.joinToString("\n"))
 
             } catch (e: Exception) {
@@ -118,23 +129,17 @@ class ContentFilteringService(private val context: Context) {
 
     private fun setupDnsFiltering(): Boolean {
         return try {
-            Log.d(TAG, "Setting Private DNS to CleanBrowsing Adult Filter...")
+            Log.d(TAG, "Setting Private DNS to CleanBrowsing Adult Filter…")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+: Use official API
                 devicePolicyManager.setGlobalPrivateDnsModeSpecifiedHost(
                     adminComponent,
                     DnsServers.CLEANBROWSING_ADULT_FILTER
                 )
                 Log.d(TAG, "✅ Private DNS set via API")
             } else {
-                // Android 9: Use Settings
-                android.provider.Settings.Global.putString(
-                    context.contentResolver,
-                    "private_dns_mode",
-                    "hostname"
-                )
-                android.provider.Settings.Global.putString(
+                Settings.Global.putString(context.contentResolver, "private_dns_mode", "hostname")
+                Settings.Global.putString(
                     context.contentResolver,
                     "private_dns_specifier",
                     DnsServers.CLEANBROWSING_ADULT_FILTER
@@ -142,13 +147,11 @@ class ContentFilteringService(private val context: Context) {
                 Log.d(TAG, "✅ Private DNS set via Settings")
             }
 
-            // Lock DNS settings
             devicePolicyManager.addUserRestriction(
                 adminComponent,
                 UserManager.DISALLOW_CONFIG_PRIVATE_DNS
             )
             Log.d(TAG, "✅ DNS settings locked")
-
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ DNS setup failed", e)
@@ -162,68 +165,29 @@ class ContentFilteringService(private val context: Context) {
 
     private fun configureManagedChrome(): Boolean {
         return try {
-            Log.d(TAG, "Configuring Chrome managed policies...")
-
+            Log.d(TAG, "Configuring Chrome managed policies…")
             val policies = Bundle().apply {
-                // ✅ CRITICAL: Disable Incognito Mode
                 putBoolean("IncognitoModeAvailability", false)
-                Log.d(TAG, "  - Incognito Mode: DISABLED")
-
-                // ✅ CRITICAL: Force SafeSearch
                 putBoolean("ForceSafeSearch", true)
-                Log.d(TAG, "  - SafeSearch: FORCED")
-
-                // ✅ CRITICAL: Force YouTube Restricted Mode
-                putInt("ForceYouTubeRestrict", 2) // 2 = Strict
-                Log.d(TAG, "  - YouTube Restricted: STRICT")
-
-                // ✅ Block extension installs (prevents VPN/proxy extensions)
+                putInt("ForceYouTubeRestrict", 2)
                 putStringArray("ExtensionInstallBlacklist", arrayOf("*"))
-                Log.d(TAG, "  - Extensions: BLOCKED")
-
-                // ✅ Disable developer tools
                 putBoolean("DeveloperToolsDisabled", true)
-                Log.d(TAG, "  - Developer Tools: DISABLED")
-
-                // ✅ CRITICAL: Disable DNS over HTTPS (forces our DNS)
                 putString("DnsOverHttpsMode", "off")
-                Log.d(TAG, "  - DNS-over-HTTPS: DISABLED")
-
-                // ✅ Set homepage
                 putString("HomepageLocation", "https://www.google.com")
                 putBoolean("HomepageIsNewTabPage", false)
-
-                // ✅ Disable password manager (prevents saving adult site passwords)
                 putBoolean("PasswordManagerEnabled", false)
-                Log.d(TAG, "  - Password Manager: DISABLED")
             }
-
-            devicePolicyManager.setApplicationRestrictions(
-                adminComponent,
-                CHROME_PACKAGE,
-                policies
-            )
-
+            devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, policies)
             Log.d(TAG, "✅ Chrome configured with ${policies.size()} policies")
             true
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Chrome configuration failed", e)
             false
         }
     }
 
-    /**
-     * CRITICAL: Disables Chrome's DNS-over-HTTPS which bypasses our DNS filter
-     */
     private fun disableChromeDoH() {
-        try {
-            // This is already handled in the managed configuration above
-            // But we explicitly call it out because it's SO important
-            Log.d(TAG, "Chrome DoH disabled via managed configuration")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to disable Chrome DoH", e)
-        }
+        Log.d(TAG, "Chrome DoH disabled via managed configuration")
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -233,36 +197,102 @@ class ContentFilteringService(private val context: Context) {
     data class BlockResult(val blocked: Int, val notInstalled: Int)
 
     private fun blockOtherBrowsers(): BlockResult {
-        var blockedCount = 0
+        var blockedCount     = 0
         var notInstalledCount = 0
-
         for (browserPackage in BLOCKED_BROWSERS) {
             try {
-                // Check if browser is installed
                 context.packageManager.getPackageInfo(browserPackage, 0)
-
-                // It's installed - hide/block it
-                val hidden = devicePolicyManager.setApplicationHidden(
-                    adminComponent,
-                    browserPackage,
-                    true
-                )
-
-                if (hidden) {
-                    blockedCount++
-                    Log.d(TAG, "  ✅ Blocked: $browserPackage")
-                } else {
-                    Log.w(TAG, "  ⚠️ Failed to block: $browserPackage")
-                }
-
+                val hidden = devicePolicyManager.setApplicationHidden(adminComponent, browserPackage, true)
+                if (hidden) { blockedCount++; Log.d(TAG, "  ✅ Blocked: $browserPackage") }
+                else         Log.w(TAG, "  ⚠️ Failed to block: $browserPackage")
             } catch (e: Exception) {
-                // Not installed - that's fine
                 notInstalledCount++
             }
         }
-
         Log.d(TAG, "Browser blocking: $blockedCount blocked, $notInstalledCount not installed")
         return BlockResult(blockedCount, notInstalledCount)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LAYER 4: KEYWORD DETECTION — Accessibility Service
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Enables [KeywordAccessibilityService] programmatically using Device Owner
+     * privileges. This does NOT require the user to visit Accessibility Settings.
+     *
+     * Uses DevicePolicyManager.setPermittedAccessibilityServices() to whitelist
+     * our service, then writes to Settings.Secure to enable it.
+     *
+     * @return true if the service was enabled successfully.
+     */
+    private fun enableKeywordDetectionService(): Boolean {
+        return try {
+            if (!deviceOwnerService.isDeviceOwner()) {
+                Log.w(TAG, "Cannot enable a11y service — not device owner")
+                return false
+            }
+
+            // Step 1: Whitelist our accessibility service via Device Policy
+            // Passing null means ALL services are permitted (most permissive).
+            // Passing an explicit list locks down to only those services.
+            // We allow all so existing accessibility tools (TalkBack etc.) still work.
+            devicePolicyManager.setPermittedAccessibilityServices(adminComponent, null)
+            Log.d(TAG, "  ✅ Accessibility services whitelisted")
+
+            // Step 2: Write the enabled services setting
+            // Format: "package/FullyQualifiedClassName"
+            val currentEnabled = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+
+            val newEnabled = if (currentEnabled.contains(A11Y_SERVICE)) {
+                currentEnabled   // already in the list
+            } else if (currentEnabled.isBlank()) {
+                A11Y_SERVICE
+            } else {
+                "$currentEnabled:$A11Y_SERVICE"
+            }
+
+            Settings.Secure.putString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                newEnabled
+            )
+            Log.d(TAG, "  ✅ ENABLED_ACCESSIBILITY_SERVICES updated")
+
+            // Step 3: Turn accessibility on globally (may already be on)
+            Settings.Secure.putInt(
+                context.contentResolver,
+                Settings.Secure.ACCESSIBILITY_ENABLED,
+                1
+            )
+            Log.d(TAG, "  ✅ Accessibility globally enabled")
+
+            Log.d(TAG, "✅ KeywordAccessibilityService activated programmatically")
+            true
+
+        } catch (e: SecurityException) {
+            Log.e(TAG, "❌ SecurityException enabling a11y service: ${e.message}")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to enable a11y service: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Returns true if [KeywordAccessibilityService] is currently enabled.
+     */
+    fun isKeywordDetectionActive(): Boolean {
+        return try {
+            val enabled = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabled.contains(A11Y_SERVICE)
+        } catch (e: Exception) { false }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -270,173 +300,101 @@ class ContentFilteringService(private val context: Context) {
     // ═══════════════════════════════════════════════════════════════════
 
     fun getProtectionStatus(): ProtectionStatus {
-        val dnsActive = isDnsFilterActive()
-        val chromeManaged = isChromeManaged()
-        val browsersBlocked = countBlockedBrowsers()
-
         return ProtectionStatus(
-            dnsFilterActive = dnsActive,
-            chromeManagedActive = chromeManaged,
-            browsersBlocked = browsersBlocked,
-            isFullyProtected = dnsActive && chromeManaged && browsersBlocked > 0
+            dnsFilterActive       = isDnsFilterActive(),
+            chromeManagedActive   = isChromeManaged(),
+            browsersBlocked       = countBlockedBrowsers(),
+            keywordDetectionActive = isKeywordDetectionActive(),
+            isFullyProtected      = isDnsFilterActive() && isChromeManaged() && isKeywordDetectionActive()
         )
     }
 
     private fun isDnsFilterActive(): Boolean {
         return try {
-            // Check if DNS settings are locked
             val dnsLocked = devicePolicyManager.getUserRestrictions(adminComponent)
                 .getBoolean(UserManager.DISALLOW_CONFIG_PRIVATE_DNS, false)
-
-            // On Android 10+, we can verify the DNS is set
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val currentDns = android.provider.Settings.Global.getString(
-                    context.contentResolver,
-                    "private_dns_specifier"
+                val currentDns = Settings.Global.getString(
+                    context.contentResolver, "private_dns_specifier"
                 )
                 dnsLocked && currentDns == DnsServers.CLEANBROWSING_ADULT_FILTER
             } else {
                 dnsLocked
             }
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     private fun isChromeManaged(): Boolean {
         return try {
-            val restrictions = devicePolicyManager.getApplicationRestrictions(
-                adminComponent,
-                CHROME_PACKAGE
-            )
-
-            val incognitoDisabled = !restrictions.getBoolean("IncognitoModeAvailability", true)
-            val safeSearchForced = restrictions.getBoolean("ForceSafeSearch", false)
-            val dohDisabled = restrictions.getString("DnsOverHttpsMode") == "off"
-
-            incognitoDisabled && safeSearchForced && dohDisabled
-        } catch (e: Exception) {
-            false
-        }
+            val r = devicePolicyManager.getApplicationRestrictions(adminComponent, CHROME_PACKAGE)
+            !r.getBoolean("IncognitoModeAvailability", true) &&
+                    r.getBoolean("ForceSafeSearch", false) &&
+                    r.getString("DnsOverHttpsMode") == "off"
+        } catch (e: Exception) { false }
     }
 
     private fun countBlockedBrowsers(): Int {
         var count = 0
-        for (browserPackage in BLOCKED_BROWSERS) {
-            try {
-                val isHidden = devicePolicyManager.isApplicationHidden(
-                    adminComponent,
-                    browserPackage
-                )
-                if (isHidden) count++
-            } catch (e: Exception) {
-                // Not installed
-            }
+        for (pkg in BLOCKED_BROWSERS) {
+            try { if (devicePolicyManager.isApplicationHidden(adminComponent, pkg)) count++ }
+            catch (_: Exception) {}
         }
         return count
     }
 
-    /**
-     * Tests if DNS filtering is working by attempting to resolve a blocked domain
-     */
+    // ═══════════════════════════════════════════════════════════════════
+    // DNS TEST
+    // ═══════════════════════════════════════════════════════════════════
+
     suspend fun testDnsFilter(): DnsTestResult {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Testing DNS filter...")
-
-                // Try to resolve a known adult site
                 val testDomain = "pornhub.com"
-                val startTime = System.currentTimeMillis()
-
+                val startTime  = System.currentTimeMillis()
                 try {
-                    val address = java.net.InetAddress.getByName(testDomain)
+                    val address   = java.net.InetAddress.getByName(testDomain)
                     val elapsedMs = System.currentTimeMillis() - startTime
-
-                    // If we got an address, DNS did NOT block it
-                    Log.w(TAG, "⚠️ DNS filter FAILED - domain resolved to: $address")
+                    Log.w(TAG, "⚠️ DNS filter FAILED — resolved to: $address")
                     DnsTestResult.Failed(
-                        "DNS filter is NOT working!\n\n" +
-                                "Test domain resolved to: ${address.hostAddress}\n" +
-                                "Time: ${elapsedMs}ms\n\n" +
-                                "This means adult sites are NOT being blocked."
+                        "DNS filter is NOT working!\n\nResolved to: ${address.hostAddress}\nTime: ${elapsedMs}ms"
                     )
                 } catch (e: java.net.UnknownHostException) {
                     val elapsedMs = System.currentTimeMillis() - startTime
-                    // Domain couldn't be resolved - DNS blocked it!
-                    Log.d(TAG, "✅ DNS filter WORKING - domain blocked")
-                    DnsTestResult.Success(
-                        "✅ DNS filter is WORKING!\n\n" +
-                                "Test domain was blocked.\n" +
-                                "Time: ${elapsedMs}ms\n\n" +
-                                "Adult sites will be blocked at the network level."
-                    )
+                    Log.d(TAG, "✅ DNS filter WORKING — domain blocked")
+                    DnsTestResult.Success("✅ DNS filter is WORKING!\n\nBlocked in ${elapsedMs}ms.")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "DNS test failed with error", e)
                 DnsTestResult.Error("Test error: ${e.message}")
             }
         }
     }
 
-    /**
-     * Gets a user-friendly status report
-     */
     fun getStatusReport(): String {
-        val status = getProtectionStatus()
-
+        val s = getProtectionStatus()
         return buildString {
             appendLine("🛡️ CONTENT FILTERING STATUS")
-            appendLine()
             appendLine("═══════════════════════════════════════")
             appendLine()
-
             appendLine("LAYER 1: DNS FILTERING")
-            if (status.dnsFilterActive) {
-                appendLine("✅ Active - CleanBrowsing Adult Filter")
-                appendLine("   • Blocks adult domains at network level")
-                appendLine("   • Works on all apps")
-                appendLine("   • Settings locked")
-            } else {
-                appendLine("❌ INACTIVE")
-                appendLine("   • DNS filter not configured")
-            }
+            appendLine(if (s.dnsFilterActive) "✅ Active — CleanBrowsing Adult Filter" else "❌ INACTIVE")
             appendLine()
-
             appendLine("LAYER 2: CHROME MANAGEMENT")
-            if (status.chromeManagedActive) {
-                appendLine("✅ Active - All policies enforced")
-                appendLine("   • Incognito mode disabled")
-                appendLine("   • SafeSearch forced")
-                appendLine("   • YouTube restricted")
-                appendLine("   • DoH disabled")
-            } else {
-                appendLine("❌ INACTIVE")
-                appendLine("   • Chrome not managed")
-            }
+            appendLine(if (s.chromeManagedActive) "✅ Active — All policies enforced" else "❌ INACTIVE")
             appendLine()
-
             appendLine("LAYER 3: BROWSER BLOCKING")
-            appendLine("✅ ${status.browsersBlocked} browsers blocked")
-            appendLine("   • Only Chrome allowed")
-            appendLine("   • All other browsers hidden")
+            appendLine("✅ ${s.browsersBlocked} browsers blocked")
             appendLine()
-
+            appendLine("LAYER 4: KEYWORD DETECTION")
+            appendLine(if (s.keywordDetectionActive) "✅ Active — monitoring Chrome search bar" else "❌ INACTIVE")
+            appendLine()
             appendLine("═══════════════════════════════════════")
-            appendLine()
-
-            if (status.isFullyProtected) {
-                appendLine("🎉 FULL PROTECTION ACTIVE")
-            } else {
-                appendLine("⚠️ PROTECTION INCOMPLETE")
-                appendLine()
-                appendLine("Tap 'Activate Protection' to fix.")
-            }
+            appendLine(if (s.isFullyProtected) "🎉 FULL PROTECTION ACTIVE" else "⚠️ PROTECTION INCOMPLETE")
         }
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// RESULT CLASSES
+// RESULT & STATUS CLASSES
 // ═══════════════════════════════════════════════════════════════════
 
 sealed class ContentFilterResult {
@@ -446,14 +404,15 @@ sealed class ContentFilterResult {
 }
 
 data class ProtectionStatus(
-    val dnsFilterActive: Boolean,
-    val chromeManagedActive: Boolean,
-    val browsersBlocked: Int,
-    val isFullyProtected: Boolean
+    val dnsFilterActive        : Boolean,
+    val chromeManagedActive    : Boolean,
+    val browsersBlocked        : Int,
+    val keywordDetectionActive : Boolean,   // ← NEW field
+    val isFullyProtected       : Boolean
 )
 
 sealed class DnsTestResult {
     data class Success(val message: String) : DnsTestResult()
-    data class Failed(val message: String) : DnsTestResult()
-    data class Error(val error: String) : DnsTestResult()
+    data class Failed(val message: String)  : DnsTestResult()
+    data class Error(val error: String)     : DnsTestResult()
 }
