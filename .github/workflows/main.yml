@@ -21,6 +21,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # FIX: Inject google-services.json for the build
+      - name: Decode Google Services JSON
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -53,6 +57,10 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+
+      # FIX: Inject google-services.json for the tests
+      - name: Decode Google Services JSON
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -93,9 +101,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Decode keystore
+      # FIX: Decode both Keystore and Google Services JSON
+      - name: Decode secrets
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/keystore.jks
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
 
       - name: Bump version
         id: bump
@@ -145,7 +155,7 @@ jobs:
           ACCESS_TOKEN=$(gcloud auth print-access-token)
 
           curl -X PATCH \
-            "https://firestore.googleapis.com/v1/projects/${{ secrets.FIREBASE_PROJECT_ID }}/databases/(default)/documents/app_config/version" \
+            "https://firestore.googleapis.com/v1/projects/${{ secrets.FIREBASE_PROJECT_ID }}/documents/app_config/version" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{

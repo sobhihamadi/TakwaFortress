@@ -528,7 +528,7 @@ git clone https://github.com/your-username/TakwaFortress.git
 cd TakwaFortress
 ```
 
-1. Add your `google-services.json` to `app/`
+1. Add your `google-services.json` to `app/` (To build the project, obtain your google-services.json from Firebase and place it in the /app directory. You can use app/google-services.json.example as a template)
 2. Create a Firestore database with a `users` collection and an `app_config/version` document
 3. (Optional) Set up a Whop product and update `CommitmentPlan.kt` with your checkout URLs
 
