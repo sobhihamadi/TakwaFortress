@@ -1,0 +1,7 @@
+{
+  "project_info": {
+    "project_number": "123456789",
+    "project_id": "your-project-id"
+  },
+  "note": "To run this project, replace this file with your actual google-services.json from Firebase Console."
+}
