@@ -46,7 +46,7 @@ The app targets adults seeking structured recovery from digital addiction, parti
 - Suspends apps at the OS level (greyed out, unlaunchable)
 - Sets private DNS to a content-filtering server
 - Locks Chrome into SafeSearch mode with incognito disabled
-- Blocks factory reset and uninstallation of itself
+- Blocks  uninstallation of itself
 - Enforces automatic network time to prevent "time travel" bypasses
 
 ---
