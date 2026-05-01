@@ -166,7 +166,43 @@ class ContentFilteringService(private val context: Context) {
     private fun configureManagedChrome(): Boolean {
         return try {
             Log.d(TAG, "Configuring Chrome managed policies…")
+
+            // ── Blocked sites list ────────────────────────────────────────────────
+            // Add or remove any domain here. "x.com" and "twitter.com" are the same
+            // site. Both must be listed. Subdomains are blocked automatically.
+            val blockedSites = arrayOf(
+                // Social media
+                "twitter.com",
+                "x.com",
+                "instagram.com",
+                "tiktok.com",
+                "reddit.com",
+                "snapchat.com",
+                "tumblr.com",
+                "discord.com",
+                "pinterest.com",
+                "telegram.org",
+                "web.telegram.org",
+
+                // Adult (backup — DNS already blocks these, this adds Chrome layer)
+                "pornhub.com",
+                "xvideos.com",
+                "xnxx.com",
+                "onlyfans.com",
+                "redtube.com",
+                "youporn.com",
+
+                // Proxy / VPN bypass sites (prevent circumvention)
+                "proxysite.com",
+                "hide.me",
+                "whoer.net",
+                "vpnbook.com",
+                "ultrasurf.us",
+                "anonymouse.org"
+            )
+
             val policies = Bundle().apply {
+                // ── Existing policies (unchanged) ─────────────────────────────────
                 putBoolean("IncognitoModeAvailability", false)
                 putBoolean("ForceSafeSearch", true)
                 putInt("ForceYouTubeRestrict", 2)
@@ -176,9 +212,20 @@ class ContentFilteringService(private val context: Context) {
                 putString("HomepageLocation", "https://www.google.com")
                 putBoolean("HomepageIsNewTabPage", false)
                 putBoolean("PasswordManagerEnabled", false)
+
+                // ── NEW: Block specific sites ─────────────────────────────────────
+                putStringArray("URLBlocklist", blockedSites)
+
+                // ── NEW: Prevent searching for bypass methods ─────────────────────
+                // This blocks the chrome://flags page (used to disable policies)
+                putStringArray(
+                    "URLBlocklist",
+                    blockedSites + arrayOf("chrome://flags", "chrome://settings/privacy")
+                )
             }
+
             devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, policies)
-            Log.d(TAG, "✅ Chrome configured with ${policies.size()} policies")
+            Log.d(TAG, "✅ Chrome configured with ${policies.size()} policies, ${blockedSites.size} sites blocked")
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Chrome configuration failed", e)
