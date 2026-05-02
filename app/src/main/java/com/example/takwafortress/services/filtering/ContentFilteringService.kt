@@ -174,7 +174,7 @@ class ContentFilteringService(private val context: Context) {
                 // Social media
                 "twitter.com",
                 "x.com",
-                "instagram.com",
+
                 "tiktok.com",
                 "reddit.com",
                 "snapchat.com",
