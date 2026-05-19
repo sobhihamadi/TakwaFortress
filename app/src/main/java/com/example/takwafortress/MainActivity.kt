@@ -79,14 +79,11 @@ class TaqwaApplication : Application() {
 
     private fun initializeServices() {
         Log.i(TAG, "Initializing services...")
-
-        deviceOwnerService = DeviceOwnerService(this)
-        appInstallMonitorService = AppInstallMonitorService(this)
-
         appInstallMonitorService.startMonitoring()
 
         Log.i(TAG, "Services initialized")
     }
+
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -90,7 +90,6 @@ class BootCompletedReceiver : BroadcastReceiver() {
                 )
                 putExtra("started_from_boot", true)
             }
-            context.startForegroundService(serviceIntent)
             Log.i(TAG, "ContentFilteringService start requested")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start ContentFilteringService: ${e.message}")

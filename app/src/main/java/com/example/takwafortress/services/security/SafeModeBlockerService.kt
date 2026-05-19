@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.util.Log
 import com.example.takwafortress.receivers.BootCompletedReceiver
+import com.example.takwafortress.services.security.AdbDiscoveryService.Companion.TAG
 
 class SafeModeBlockerService(private val context: Context) {
 
@@ -45,15 +47,10 @@ class SafeModeBlockerService(private val context: Context) {
      * (For non-Samsung devices where we can't block Safe Mode entirely)
      */
     private fun setupSafeModeWatchdog(): SafeModeBlockResult {
-        return try {
-            // Register boot receiver to detect Safe Mode
-            val filter = IntentFilter(Intent.ACTION_BOOT_COMPLETED)
-            context.registerReceiver(BootCompletedReceiver(), filter)
-
-            SafeModeBlockResult.WatchdogActive
-        } catch (e: Exception) {
-            SafeModeBlockResult.Failed(e.message ?: "Watchdog setup failed")
-        }
+        // BOOT_COMPLETED is a manifest-registered receiver — no runtime registration needed.
+        // The manifest entry in AndroidManifest.xml already handles this.
+        Log.i(TAG, "Watchdog: relying on manifest BootCompletedReceiver")
+        return SafeModeBlockResult.WatchdogActive
     }
 
     /**

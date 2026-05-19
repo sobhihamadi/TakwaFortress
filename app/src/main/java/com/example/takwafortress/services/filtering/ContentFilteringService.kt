@@ -100,6 +100,8 @@ class ContentFilteringService(private val context: Context) {
                 disableChromeDoH()
                 results.add("✅ Chrome DoH: Disabled")
 
+
+
                 // ── LAYER 4: Keyword detection (Accessibility Service) ─────────
                 Log.d(TAG, "Layer 4: Enabling keyword detection…")
                 if (enableKeywordDetectionService()) {
