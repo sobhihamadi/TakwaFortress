@@ -59,7 +59,7 @@ class TaqwaApplication : Application() {
             // Verify it actually worked
             val bcProvider = Security.getProvider("BC")
             if (bcProvider == null) {
-                throw RuntimeException("BouncyCastle registration failed!")
+                Log.e(TAG, "⚠️ BouncyCastle registration failed — ADB pairing may not work")
             }
 
             // Log available signature algorithms for debugging
@@ -71,7 +71,7 @@ class TaqwaApplication : Application() {
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ FATAL: BouncyCastle registration failed", e)
-            throw RuntimeException("BouncyCastle registration failed: ${e.message}", e)
+
         }
     }
 
