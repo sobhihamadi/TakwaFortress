@@ -28,14 +28,12 @@ class TaqwaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-
-        // ✅ CRITICAL: Register BouncyCastle FIRST
         registerBouncyCastle()
-
         instance = this
 
-        Log.i(TAG, "🚀 Taqwa Fortress starting...")
-        Log.i(TAG, "Version: ${AppConstants.APP_VERSION}")
+        // Initialize BEFORE calling initializeServices()
+        deviceOwnerService = DeviceOwnerService(this)
+        appInstallMonitorService = AppInstallMonitorService(this)
 
         initializeServices()
         createNotificationChannels()
@@ -83,7 +81,6 @@ class TaqwaApplication : Application() {
 
         Log.i(TAG, "Services initialized")
     }
-
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
