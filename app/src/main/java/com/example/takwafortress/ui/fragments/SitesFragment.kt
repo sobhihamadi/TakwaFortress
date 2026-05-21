@@ -234,7 +234,11 @@ class SitesFragment : Fragment() {
 
             if (sites.isEmpty()) {
                 blockedListContainer.addView(
-                    text("No sites blocked yet\n\nAdd domains above to block them in Chrome.", 14f, TEXT_GREY, gravity = Gravity.CENTER).apply {
+                    // Replace the empty-state text inside loadBlockedSites():
+                    text(
+                        "No sites blocked yet\n\nAdd a domain above — blocked sites\ncannot be removed until your commitment ends.",
+                        14f, TEXT_GREY, gravity = Gravity.CENTER
+                    ).apply {
                         setPadding(0, dp(32), 0, 0)
                         setLineSpacing(0f, 1.5f)
                         layoutParams = lp()
@@ -270,23 +274,22 @@ class SitesFragment : Fragment() {
         textBlock.addView(statusPill("● Blocked in Chrome", RED, RED_DIM).apply {
             (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(4)
         })
+        textBlock.addView(text("🔒 Blocked until commitment ends", 11f, TEXT_GREY).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
 
-        val unblockBtn = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(10), dp(5), dp(12), dp(5))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#1A2030"))
-                setStroke(dp(1), BORDER_DIM)
-                cornerRadius = dp(20).toFloat()
-            }
-            addView(text("Unblock", 12f, TEXT_GREY, bold = true))
-            setOnClickListener { confirmUnblock(site) }
+        // Lock icon — no interaction, matches the apps tab behaviour
+        val lockIcon = TextView(requireContext()).apply {
+            text = "🔒"
+            textSize = 18f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { leftMargin = dp(8) }
         }
 
         row.addView(textBlock)
-        row.addView(unblockBtn)
+        row.addView(lockIcon)
         return row
     }
 

@@ -74,7 +74,7 @@ class FortressDashboardActivity : AppCompatActivity() {
                 .add(R.id.fragmentContainer, DashboardFragment.newInstance(startInExpiredMode), "dashboard")
                 .add(R.id.fragmentContainer, AppsFragment.newInstance(startInExpiredMode),      "apps")
                 .add(R.id.fragmentContainer, AwarenessFragment.newInstance(),                   "awareness")
-                .add(R.id.fragmentContainer, SitesFragment.newInstance(), "sites")
+                .add(R.id.fragmentContainer, SitesFragment.newInstance(), "journey")
                 .commitNow()
         }
 
