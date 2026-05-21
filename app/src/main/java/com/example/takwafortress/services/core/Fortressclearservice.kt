@@ -216,6 +216,14 @@ class FortressClearService(private val context: Context) {
 
         try {
             fortressPolicyRepo.clearActivePolicy()
+            // Clear user-blocked sites
+            try {
+                com.example.takwafortress.services.filtering.SiteBlockingService(context)
+                    .clearAllUserSites()
+                Log.i(TAG, "✅ Blocked sites cleared")
+            } catch (e: Exception) {
+                Log.w(TAG, "Clear blocked sites: ${e.message}")
+            }
             Log.i(TAG, "✅ Fortress policy cleared")
         } catch (e: Exception) { Log.w(TAG, "Clear policy: ${e.message}") }
 

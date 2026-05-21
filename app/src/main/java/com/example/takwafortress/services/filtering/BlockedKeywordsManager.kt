@@ -31,7 +31,8 @@ class BlockedKeywordsManager(context: Context) {
             "anal sex", "threesome", "gangbang", "creampie", "milf", "teen sex",
             "amateur porn", "free porn", "watch porn", "download porn",
             "adult video", "adult movie", "adult film", "adult site",
-            "sexy video", "hot video", "nude photo", "nude pic",
+            "sexy video", "hot video", "nude photo", "nude pic","doyouth twitter","dayouth twitter",
+            "dyouth twitter","deyouth twitter",
 
             // English — adjacent / gateway
             "dating app", "hookup", "tinder sex", "snapchat nude",
@@ -44,7 +45,7 @@ class BlockedKeywordsManager(context: Context) {
             "بنات عاريات", "نساء عاريات", "جنس", "ممارسة الجنس",
             "مص", "لحس", "شهوة", "إثارة جنسية", "إباحي",
             "موقع إباحي", "أفلام إباحية", "صور إباحية",
-
+" ديوت تويتر","ديوث تويتر","ديوث امي تويتر",
             // Urdu/Hindi transliterated
             "chudai", "chut", "lund", "gaand", "randi", "bhosdike",
             "harami", "sexy video", "desi porn", "indian sex",

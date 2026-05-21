@@ -19,6 +19,7 @@ import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.example.takwafortress.ui.fragments.SitesFragment
 
 class FortressDashboardActivity : AppCompatActivity() {
 
@@ -73,7 +74,7 @@ class FortressDashboardActivity : AppCompatActivity() {
                 .add(R.id.fragmentContainer, DashboardFragment.newInstance(startInExpiredMode), "dashboard")
                 .add(R.id.fragmentContainer, AppsFragment.newInstance(startInExpiredMode),      "apps")
                 .add(R.id.fragmentContainer, AwarenessFragment.newInstance(),                   "awareness")
-                .add(R.id.fragmentContainer, JourneyFragment.newInstance(),                     "journey")
+                .add(R.id.fragmentContainer, SitesFragment.newInstance(), "sites")
                 .commitNow()
         }
 
@@ -151,7 +152,7 @@ class FortressDashboardActivity : AppCompatActivity() {
         tabDashboard = makeNavTab("🛡️", "Fortress")
         tabApps      = makeNavTab("📱", "Apps")
         tabAwareness = makeNavTab("📖", "Awareness")
-        tabJourney   = makeNavTab("🗺️", "Journey")
+        tabJourney   = makeNavTab("🌐", "Sites")
 
         iconDashboard  = tabDashboard.getChildAt(0) as TextView
         labelDashboard = tabDashboard.getChildAt(1) as TextView
