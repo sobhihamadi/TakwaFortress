@@ -90,6 +90,9 @@ class ContentFilteringService(private val context: Context) {
                     results.add("⚠️ Chrome Management: Failed")
                     allSucceeded = false
                 }
+                // After layer 2 succeeds, sync the URLBlocklist with user-blocked sites
+                val siteService = SiteBlockingService(context)
+                siteService.applyToChrome()
 
                 // ── LAYER 3: Block other browsers ─────────────────────────────
                 Log.d(TAG, "Layer 3: Blocking alternative browsers…")
@@ -215,15 +218,9 @@ class ContentFilteringService(private val context: Context) {
                 putBoolean("HomepageIsNewTabPage", false)
                 putBoolean("PasswordManagerEnabled", false)
 
-                // ── NEW: Block specific sites ─────────────────────────────────────
-                putStringArray("URLBlocklist", blockedSites)
+                // URLBlocklist is managed by SiteBlockingService.applyToChrome()
+                // so that user-added domains are always merged with the hardcoded list.
 
-                // ── NEW: Prevent searching for bypass methods ─────────────────────
-                // This blocks the chrome://flags page (used to disable policies)
-                putStringArray(
-                    "URLBlocklist",
-                    blockedSites + arrayOf("chrome://flags", "chrome://settings/privacy")
-                )
             }
 
             devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, policies)
