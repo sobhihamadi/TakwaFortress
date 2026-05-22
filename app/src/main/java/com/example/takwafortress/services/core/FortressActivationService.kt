@@ -129,6 +129,7 @@ class FortressActivationService(private val context: Context) {
         Log.i(TAG, "═══════════════════════════════════════")
 
         return FortressActivationResult.Success(identifierFortressPolicy)
+
     }
 
     /**
@@ -197,84 +198,86 @@ class FortressActivationService(private val context: Context) {
 
         return if (errors.isEmpty()) RestrictionResult.Success
         else RestrictionResult.Failure(errors)
+
     }
+
 
 
     /**
      * Deactivates the fortress (only allowed if period has expired).
      */
-    suspend fun deactivateFortress(): FortressDeactivationResult {
-        Log.i(TAG, "Attempting fortress deactivation...")
-
-        val activePolicy = fortressPolicyRepository.getActivePolicy()
-            ?: return FortressDeactivationResult.NoActivePolicy
-
-        // Check if unlock is eligible (period expired)
-        if (!activePolicy.isUnlockEligible()) {
-            val remainingDays = activePolicy.getRemainingDays()
-            Log.w(TAG, "❌ Period not expired. Remaining: $remainingDays days")
-            return FortressDeactivationResult.PeriodNotExpired(
-                remainingDays = remainingDays
-            )
-        }
-
-        // Update state to UNLOCKABLE (allows user to choose to deactivate)
-        fortressPolicyRepository.updateFortressState(FortressState.UNLOCKABLE)
-        Log.i(TAG, "✅ Fortress marked as UNLOCKABLE")
-
-        return FortressDeactivationResult.Success
-    }
+//    suspend fun deactivateFortress(): FortressDeactivationResult {
+//        Log.i(TAG, "Attempting fortress deactivation...")
+//
+//        val activePolicy = fortressPolicyRepository.getActivePolicy()
+//            ?: return FortressDeactivationResult.NoActivePolicy
+//
+//        // Check if unlock is eligible (period expired)
+//        if (!activePolicy.isUnlockEligible()) {
+//            val remainingDays = activePolicy.getRemainingDays()
+//            Log.w(TAG, "❌ Period not expired. Remaining: $remainingDays days")
+//            return FortressDeactivationResult.PeriodNotExpired(
+//                remainingDays = remainingDays
+//            )
+//        }
+//
+//        // Update state to UNLOCKABLE (allows user to choose to deactivate)
+//        fortressPolicyRepository.updateFortressState(FortressState.UNLOCKABLE)
+//        Log.i(TAG, "✅ Fortress marked as UNLOCKABLE")
+//
+//        return FortressDeactivationResult.Success
+//    }
 
     /**
      * Checks if fortress can be unlocked.
      */
-    suspend fun canUnlock(): Boolean {
-        val activePolicy = fortressPolicyRepository.getActivePolicy()
-        val canUnlock = activePolicy?.isUnlockEligible() == true
-
-        if (canUnlock) {
-            Log.i(TAG, "✅ Fortress can be unlocked")
-        } else {
-            Log.i(TAG, "❌ Fortress cannot be unlocked yet")
-        }
-
-        return canUnlock
-    }
+//    suspend fun canUnlock(): Boolean {
+//        val activePolicy = fortressPolicyRepository.getActivePolicy()
+//        val canUnlock = activePolicy?.isUnlockEligible() == true
+//
+//        if (canUnlock) {
+//            Log.i(TAG, "✅ Fortress can be unlocked")
+//        } else {
+//            Log.i(TAG, "❌ Fortress cannot be unlocked yet")
+//        }
+//
+//        return canUnlock
+//    }
 
     /**
      * Gets the current fortress status.
      */
-    suspend fun getFortressStatus(): FortressStatus {
-        val activePolicy = fortressPolicyRepository.getActivePolicy()
-            ?: return FortressStatus.Inactive
-
-        return FortressStatus.Active(
-            policy = activePolicy,
-            remainingDays = activePolicy.getRemainingDays(),
-            progressPercentage = activePolicy.getProgressPercentage(),
-            protectionScore = activePolicy.getProtectionScore()
-        )
-    }
+//    suspend fun getFortressStatus(): FortressStatus {
+//        val activePolicy = fortressPolicyRepository.getActivePolicy()
+//            ?: return FortressStatus.Inactive
+//
+//        return FortressStatus.Active(
+//            policy = activePolicy,
+//            remainingDays = activePolicy.getRemainingDays(),
+//            progressPercentage = activePolicy.getProgressPercentage(),
+//            protectionScore = activePolicy.getProtectionScore()
+//        )
+//    }
 
     /**
      * Gets remaining time details.
      */
-    suspend fun getRemainingTime(): RemainingTime? {
-        val activePolicy = fortressPolicyRepository.getActivePolicy() ?: return null
-
-        val remainingMillis = activePolicy.getExpiryTimestamp() - System.currentTimeMillis()
-
-        if (remainingMillis <= 0) {
-            return RemainingTime(0, 0, 0, 0)
-        }
-
-        val days = (remainingMillis / (1000 * 60 * 60 * 24)).toInt()
-        val hours = ((remainingMillis / (1000 * 60 * 60)) % 24).toInt()
-        val minutes = ((remainingMillis / (1000 * 60)) % 60).toInt()
-        val seconds = ((remainingMillis / 1000) % 60).toInt()
-
-        return RemainingTime(days, hours, minutes, seconds)
-    }
+//    suspend fun getRemainingTime(): RemainingTime? {
+//        val activePolicy = fortressPolicyRepository.getActivePolicy() ?: return null
+//
+//        val remainingMillis = activePolicy.getExpiryTimestamp() - System.currentTimeMillis()
+//
+//        if (remainingMillis <= 0) {
+//            return RemainingTime(0, 0, 0, 0)
+//        }
+//
+//        val days = (remainingMillis / (1000 * 60 * 60 * 24)).toInt()
+//        val hours = ((remainingMillis / (1000 * 60 * 60)) % 24).toInt()
+//        val minutes = ((remainingMillis / (1000 * 60)) % 60).toInt()
+//        val seconds = ((remainingMillis / 1000) % 60).toInt()
+//
+//        return RemainingTime(days, hours, minutes, seconds)
+//    }
 
     /**
      * Gets content filtering status report.
@@ -364,16 +367,16 @@ data class ProtectionStatus(
     /**
      * Formatted status report.
      */
-    fun getReport(): String {
-        return buildString {
-            appendLine("🛡️ PROTECTION STATUS")
-            appendLine()
-            appendLine("Overall Score: ${getScore()}/100")
-            appendLine()
-            appendLine("Layer 1 - DNS Filter: ${if (isDnsActive) "✅ Active" else "❌ Inactive"}")
-            appendLine("Layer 2 - Chrome Management: ${if (isChromeManaged) "✅ Active" else "❌ Inactive"}")
-            appendLine("Layer 3 - Browser Blocking: ${if (areBrowsersBlocked) "✅ Active" else "❌ Inactive"}")
-            appendLine("Device Owner: ${if (isDeviceOwnerActive) "✅ Active" else "❌ Inactive"}")
-        }
-    }
+//    fun getReport(): String {
+//        return buildString {
+//            appendLine("🛡️ PROTECTION STATUS")
+//            appendLine()
+//            appendLine("Overall Score: ${getScore()}/100")
+//            appendLine()
+//            appendLine("Layer 1 - DNS Filter: ${if (isDnsActive) "✅ Active" else "❌ Inactive"}")
+//            appendLine("Layer 2 - Chrome Management: ${if (isChromeManaged) "✅ Active" else "❌ Inactive"}")
+//            appendLine("Layer 3 - Browser Blocking: ${if (areBrowsersBlocked) "✅ Active" else "❌ Inactive"}")
+//            appendLine("Device Owner: ${if (isDeviceOwnerActive) "✅ Active" else "❌ Inactive"}")
+//        }
+//    }
 }
