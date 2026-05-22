@@ -3,6 +3,8 @@ package com.example.takwafortress.services.filtering
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.UserManager
@@ -95,13 +97,10 @@ class ContentFilteringService(private val context: Context) {
                 siteService.applyToChrome()
 
                 // ── LAYER 3: Block other browsers ─────────────────────────────
-                Log.d(TAG, "Layer 3: Blocking alternative browsers…")
-                val blockResult = blockOtherBrowsers()
-                results.add("✅ Browser Blocking: ${blockResult.blocked} browsers blocked")
-
-                // Disable Chrome's built-in DNS-over-HTTPS
-                disableChromeDoH()
-                results.add("✅ Chrome DoH: Disabled")
+                // Inside activateFullProtection() loop:
+                Log.d(TAG, "Layer 3: Dynamically blocking alternative browsers…")
+                val blockResult = blockOtherBrowsersDynamic()
+                results.add("✅ Browser Blocking: ${blockResult.blocked} apps hidden")
 
 
 
@@ -242,23 +241,58 @@ class ContentFilteringService(private val context: Context) {
 
     data class BlockResult(val blocked: Int, val notInstalled: Int)
 
-    private fun blockOtherBrowsers(): BlockResult {
-        var blockedCount     = 0
-        var notInstalledCount = 0
-        for (browserPackage in BLOCKED_BROWSERS) {
-            try {
-                context.packageManager.getPackageInfo(browserPackage, 0)
-                val hidden = devicePolicyManager.setApplicationHidden(adminComponent, browserPackage, true)
-                if (hidden) { blockedCount++; Log.d(TAG, "  ✅ Blocked: $browserPackage") }
-                else         Log.w(TAG, "  ⚠️ Failed to block: $browserPackage")
-            } catch (e: Exception) {
-                notInstalledCount++
-            }
-        }
-        Log.d(TAG, "Browser blocking: $blockedCount blocked, $notInstalledCount not installed")
-        return BlockResult(blockedCount, notInstalledCount)
-    }
+    // Replace your old blockOtherBrowsers() with this:
+    fun blockOtherBrowsersDynamic(): BlockResult {
+        var blockedCount = 0
+        var skippedCount = 0
 
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse("https://www.google.com")
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+
+            // Query all activities capable of resolving web URLs
+            val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    intent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+            }
+
+            // Extract unique package names
+            val installedBrowsers = resolveInfos.map { it.activityInfo.packageName }.toSet()
+
+            for (packageName in installedBrowsers) {
+                // Keep Chrome and your own app safe
+                if (packageName == CHROME_PACKAGE || packageName == context.packageName) {
+                    skippedCount++
+                    continue
+                }
+
+                try {
+                    // Use Device Owner privilege to hide the app completely
+                    val hidden = devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+                    if (hidden) {
+                        blockedCount++
+                        Log.d(TAG, "🛡️ Dynamically blocked browser package: $packageName")
+                    } else {
+                        Log.w(TAG, "⚠️ Failed to hide browser package: $packageName")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Error hiding package: $packageName", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Dynamic browser scanning failed", e)
+        }
+
+        Log.d(TAG, "Dynamic scan: $blockedCount blocked, $skippedCount preserved (Chrome/System)")
+        return BlockResult(blockedCount, skippedCount)
+    }
     // ═══════════════════════════════════════════════════════════════════
     // LAYER 4: KEYWORD DETECTION — Accessibility Service
     // ═══════════════════════════════════════════════════════════════════
