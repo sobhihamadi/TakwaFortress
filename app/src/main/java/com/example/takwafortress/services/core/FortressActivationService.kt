@@ -11,6 +11,7 @@ import com.example.takwafortress.model.enums.FortressState
 import com.example.takwafortress.repository.implementations.LocalFortressPolicyRepository
 import com.example.takwafortress.services.filtering.ContentFilteringService
 import com.example.takwafortress.services.filtering.ContentFilterResult
+import com.example.takwafortress.services.monitoring.BrowserDetectionService
 import com.example.takwafortress.util.constants.BlockedPackages
 import java.util.UUID
 
@@ -194,6 +195,19 @@ class FortressActivationService(private val context: Context) {
             }.onSuccess {
                 Log.i(TAG, "✅ Browsers suspended: ${browsers.joinToString()}")
             }
+
+        }
+        val browserDetectionService = BrowserDetectionService(context)
+        val allInstalled = context.packageManager.getInstalledPackages(0)
+            .map { it.packageName }
+            .filter { pkg ->
+                pkg != ContentFilteringService.CHROME_PACKAGE &&
+                        pkg != context.packageName &&
+                        browserDetectionService.isBrowserApp(pkg)
+            }
+
+        if (allInstalled.isNotEmpty()) {
+            deviceOwnerService.suspendApps(allInstalled)
         }
 
         // ═══════════════════════════════════════

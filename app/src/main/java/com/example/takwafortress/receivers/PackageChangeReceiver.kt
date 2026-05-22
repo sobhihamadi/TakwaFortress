@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import com.example.takwafortress.services.filtering.AppSuspensionService
 import com.example.takwafortress.services.filtering.BlockedAppsManager
+import com.example.takwafortress.services.monitoring.BrowserDetectionService
 import com.example.takwafortress.util.constants.AppConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,13 +40,18 @@ class PackageChangeReceiver : BroadcastReceiver() {
      */
     private fun handlePackageAdded(context: Context, packageName: String) {
         val blockedAppsManager = BlockedAppsManager(context)
+        val browserDetectionService = BrowserDetectionService(context)
 
-        if (blockedAppsManager.isPackageBlocked(packageName)) {
-            Log.w(TAG, "⚠️ Blocked app installed: $packageName - Auto-blocking")
+        val isPreBlocked = blockedAppsManager.isPackageBlocked(packageName)
+        val isBrowser = browserDetectionService.isBrowserApp(packageName)
+
+        if (isPreBlocked || isBrowser) {
+            if (isBrowser) {
+                Log.w(TAG, "🌐 New browser detected on install: $packageName — auto-blocking")
+            }
             autoBlockApp(context, packageName)
         }
     }
-
     /**
      * Handles package replacement (app update).
      */
