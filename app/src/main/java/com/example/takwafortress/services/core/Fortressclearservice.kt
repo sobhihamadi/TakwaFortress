@@ -16,6 +16,7 @@ import com.example.takwafortress.repository.implementations.LocalBlockedAppRepos
 import com.example.takwafortress.repository.implementations.LocalFortressPolicyRepository
 import com.example.takwafortress.services.filtering.BlockedAppsManager
 import com.example.takwafortress.services.filtering.ContentFilteringService
+import com.example.takwafortress.services.monitoring.BrowserDetectionService
 import com.example.takwafortress.util.constants.BlockedPackages
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -53,20 +54,30 @@ class FortressClearService(private val context: Context) {
         val errors = mutableListOf<String>()
 
         // ── Step 1: Unsuspend browsers ────────────────────────────────
-        Log.i(TAG, "Step 1: Unsuspending browsers...")
+        Log.i(TAG, "Step 1: Unblocking browsers...")
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                devicePolicyManager.setPackagesSuspended(
-                    adminComponent,
-                    BlockedPackages.BROWSERS.keys.toTypedArray(),
-                    false
-                )
-            }
-            Log.i(TAG, "✅ Browsers unsuspended")
-        } catch (e: Exception) {
-            errors.add("Unsuspend browsers: ${e.message}").also { Log.e(TAG, "❌ $it") }
-        }
+            val browserDetectionService = BrowserDetectionService(context)
+            val allInstalled = context.packageManager.getInstalledPackages(0)
+                .map { it.packageName }
 
+            for (pkg in allInstalled) {
+                if (pkg == context.packageName) continue
+                if (!browserDetectionService.isBrowserApp(pkg)) continue
+                try {
+                    // Unhide
+                    devicePolicyManager.setApplicationHidden(adminComponent, pkg, false)
+                    // Also unsuspend
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(pkg), false)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not unblock $pkg: ${e.message}")
+                }
+            }
+            Log.i(TAG, "✅ Browsers unblocked")
+        } catch (e: Exception) {
+            errors.add("Unblock browsers: ${e.message}").also { Log.e(TAG, "❌ $it") }
+        }
         // ── Step 2: Unhide nuclear apps ───────────────────────────────
         Log.i(TAG, "Step 2: Unhiding nuclear apps...")
         try {

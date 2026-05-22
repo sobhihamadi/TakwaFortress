@@ -41,21 +41,18 @@ class PackageChangeReceiver : BroadcastReceiver() {
      * Handles new package installation.
      */
     private fun handlePackageAdded(context: Context, packageName: String) {
-        Log.e(TAG, "📦 handlePackageAdded: $packageName")
-
         val blockedAppsManager = BlockedAppsManager(context)
         val browserDetectionService = BrowserDetectionService(context)
 
         val isPreBlocked = blockedAppsManager.isPackageBlocked(packageName)
         val isBrowser = browserDetectionService.isBrowserApp(packageName)
 
-        Log.e(TAG, "  isPreBlocked=$isPreBlocked  isBrowser=$isBrowser")
+        // ✅ FIX: Skip Chrome — it's the allowed browser
+        val isChrome = packageName == "com.android.chrome"
 
-        if (isPreBlocked || isBrowser) {
-            // Delay slightly — package needs to fully register before suspension works
-            Handler(Looper.getMainLooper()).postDelayed({
-                autoBlockApp(context, packageName)
-            }, 2000L) // 2 second delay
+        if (!isChrome && (isPreBlocked || isBrowser)) {
+            // ✅ NO delay — block immediately
+            autoBlockApp(context, packageName)
         }
     }
     /**
@@ -94,28 +91,25 @@ class PackageChangeReceiver : BroadcastReceiver() {
                     com.example.takwafortress.receivers.DeviceAdminReceiver::class.java
                 )
 
-                // Check Device Owner first
-                val isOwner = dpm.isDeviceOwnerApp(context.packageName)
-                Log.e(TAG, "  isDeviceOwner=$isOwner for blocking $packageName")
-
-                if (!isOwner) {
+                if (!dpm.isDeviceOwnerApp(context.packageName)) {
                     Log.e(TAG, "❌ NOT Device Owner — cannot block $packageName")
                     return@launch
                 }
 
-                // Suspend the app
-                val failed = dpm.setPackagesSuspended(
-                    adminComponent,
-                    arrayOf(packageName),
-                    true
-                )
+                // ✅ FIX: Use setApplicationHidden for ALL browsers (not suspend)
+                // Suspend only grays the icon — hidden completely removes it
+                val hidden = dpm.setApplicationHidden(adminComponent, packageName, true)
+                Log.i(TAG, if (hidden) "✅ Hidden: $packageName" else "⚠️ Hide failed, trying suspend: $packageName")
 
-                if (failed.isEmpty()) {
-                    Log.e(TAG, "✅ Successfully suspended: $packageName")
-                } else {
-                    Log.e(TAG, "❌ Failed to suspend: $packageName — trying hide instead")
-                    // Fallback: hide it completely
-                    dpm.setApplicationHidden(adminComponent, packageName, true)
+                if (!hidden) {
+                    // Fallback to suspend if hide fails (e.g. system browser)
+                    val failed = dpm.setPackagesSuspended(
+                        adminComponent,
+                        arrayOf(packageName),
+                        true
+                    )
+                    Log.i(TAG, if (failed.isEmpty()) "✅ Suspended: $packageName"
+                    else "❌ Both hide and suspend failed: $packageName")
                 }
 
             } catch (e: Exception) {
