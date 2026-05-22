@@ -471,6 +471,14 @@ class ContentFilteringService(private val context: Context) {
             appendLine(if (s.isFullyProtected) "🎉 FULL PROTECTION ACTIVE" else "⚠️ PROTECTION INCOMPLETE")
         }
     }
+    fun hideBrowserPackage(packageName: String): Boolean {
+        return try {
+            devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to hide targeted package: $packageName", e)
+            false
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
