@@ -3,6 +3,9 @@ package com.example.takwafortress.services.filtering
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.UserManager
@@ -20,7 +23,7 @@ import kotlinx.coroutines.withContext
  * Implements 4-layer protection:
  * 1. DNS Filtering          (CleanBrowsing)
  * 2. Chrome Managed Config  (SafeSearch, no incognito, no DoH)
- * 3. Browser Blocking       (only Chrome allowed)
+ * 3. Browser Blocking       (dynamic — ALL browsers except Chrome are blocked)
  * 4. Keyword Detection      (Accessibility Service monitors Chrome address bar)
  */
 class ContentFilteringService(private val context: Context) {
@@ -31,16 +34,18 @@ class ContentFilteringService(private val context: Context) {
         private const val A11Y_SERVICE   =
             "com.example.takwafortress/com.example.takwafortress.services.filtering.KeywordAccessibilityService"
 
-        private val BLOCKED_BROWSERS = setOf(
+        // Fallback hardcoded list — used as a safety net.
+        // The primary block mechanism now queries the PackageManager dynamically.
+        private val KNOWN_BROWSERS = setOf(
             "org.mozilla.firefox",
             "com.opera.browser",
             "com.opera.mini.native",
             "com.brave.browser",
-            "com.microsoft.emmx",
+            "com.microsoft.emmx",          // Edge
             "com.duckduckgo.mobile.android",
             "org.mozilla.focus",
             "com.vivaldi.browser",
-            "com.sec.android.app.sbrowser",
+            "com.sec.android.app.sbrowser",// Samsung Internet
             "com.UCMobile.intl",
             "com.kiwibrowser.browser",
             "com.jamal_nasser.browser",
@@ -50,7 +55,25 @@ class ContentFilteringService(private val context: Context) {
             "com.ecosia.android",
             "com.cloudmosa.puffinFree",
             "acr.browser.lightning",
-            "acr.browser.barebones"
+            "acr.browser.barebones",
+            "com.google.android.apps.chrome",  // alternate Chrome package on some ROMs
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.chrome.canary",
+            "org.mozilla.firefox_beta",
+            "com.microsoft.bing",
+            "com.yahoo.mobile.client.android.search",
+            "mobi.mgeek.tunnybrowser",
+            "com.uc.browser.en",
+            "com.UCMobile",
+            "com.tencent.mtt",
+            "mark.via.gp",
+            "mark.via",
+            "com.helioslauncher.browser",
+            "com.mx.browser",
+            "com.mx.browser.tablet",
+            "com.mycompany.app.soulbrowser",
+            "com.fiveheads.browser",
         )
     }
 
@@ -90,32 +113,27 @@ class ContentFilteringService(private val context: Context) {
                     results.add("⚠️ Chrome Management: Failed")
                     allSucceeded = false
                 }
-                // After layer 2 succeeds, sync the URLBlocklist with user-blocked sites
+                // Sync URLBlocklist with user-blocked sites
                 val siteService = SiteBlockingService(context)
                 siteService.applyToChrome()
 
-                // ── LAYER 3: Block other browsers ─────────────────────────────
-                Log.d(TAG, "Layer 3: Blocking alternative browsers…")
-                val blockResult = blockOtherBrowsers()
+                // ── LAYER 3: Block ALL other browsers (dynamic detection) ──────
+                Log.d(TAG, "Layer 3: Blocking ALL alternative browsers dynamically…")
+                val blockResult = blockAllNonChromeBrowsers()
                 results.add("✅ Browser Blocking: ${blockResult.blocked} browsers blocked")
 
-                // Disable Chrome's built-in DNS-over-HTTPS
                 disableChromeDoH()
                 results.add("✅ Chrome DoH: Disabled")
 
-
-
-                // ── LAYER 4: Keyword detection (Accessibility Service) ─────────
+                // ── LAYER 4: Keyword detection ────────────────────────────────
                 Log.d(TAG, "Layer 4: Enabling keyword detection…")
                 if (enableKeywordDetectionService()) {
                     results.add("✅ Keyword Detection: Active")
-                    // Seed default keywords on first activation
                     BlockedKeywordsManager(context).let { mgr ->
                         Log.d(TAG, "  Keyword list: ${mgr.count()} words loaded")
                     }
                 } else {
-                    results.add("⚠️ Keyword Detection: Could not auto-enable (user may need to enable in Accessibility Settings)")
-                    // Not a hard failure — the other 3 layers are still active
+                    results.add("⚠️ Keyword Detection: Could not auto-enable")
                 }
 
                 Log.d(TAG, "🎉 Content protection activation complete!")
@@ -172,42 +190,7 @@ class ContentFilteringService(private val context: Context) {
         return try {
             Log.d(TAG, "Configuring Chrome managed policies…")
 
-            // ── Blocked sites list ────────────────────────────────────────────────
-            // Add or remove any domain here. "x.com" and "twitter.com" are the same
-            // site. Both must be listed. Subdomains are blocked automatically.
-            val blockedSites = arrayOf(
-                // Social media
-                "twitter.com",
-                "x.com",
-
-                "tiktok.com",
-                "reddit.com",
-                "snapchat.com",
-                "tumblr.com",
-                "discord.com",
-                "pinterest.com",
-                "telegram.org",
-                "web.telegram.org",
-
-                // Adult (backup — DNS already blocks these, this adds Chrome layer)
-                "pornhub.com",
-                "xvideos.com",
-                "xnxx.com",
-                "onlyfans.com",
-                "redtube.com",
-                "youporn.com",
-
-                // Proxy / VPN bypass sites (prevent circumvention)
-                "proxysite.com",
-                "hide.me",
-                "whoer.net",
-                "vpnbook.com",
-                "ultrasurf.us",
-                "anonymouse.org"
-            )
-
             val policies = Bundle().apply {
-                // ── Existing policies (unchanged) ─────────────────────────────────
                 putBoolean("IncognitoModeAvailability", false)
                 putBoolean("ForceSafeSearch", true)
                 putInt("ForceYouTubeRestrict", 2)
@@ -217,14 +200,10 @@ class ContentFilteringService(private val context: Context) {
                 putString("HomepageLocation", "https://www.google.com")
                 putBoolean("HomepageIsNewTabPage", false)
                 putBoolean("PasswordManagerEnabled", false)
-
-                // URLBlocklist is managed by SiteBlockingService.applyToChrome()
-                // so that user-added domains are always merged with the hardcoded list.
-
             }
 
             devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, policies)
-            Log.d(TAG, "✅ Chrome configured with ${policies.size()} policies, ${blockedSites.size} sites blocked")
+            Log.d(TAG, "✅ Chrome configured with ${policies.size()} policies")
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Chrome configuration failed", e)
@@ -237,41 +216,125 @@ class ContentFilteringService(private val context: Context) {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // LAYER 3: BLOCK OTHER BROWSERS
+    // LAYER 3: DYNAMIC BROWSER BLOCKING
+    //
+    // This is the KEY fix. Instead of a static list, we:
+    //   1. Query PackageManager for every app that can handle http:// URLs
+    //   2. Skip Chrome and our own app
+    //   3. Hide every other browser via setApplicationHidden
+    //   4. Also cover the known-browser list as a safety net
     // ═══════════════════════════════════════════════════════════════════
 
     data class BlockResult(val blocked: Int, val notInstalled: Int)
 
-    private fun blockOtherBrowsers(): BlockResult {
-        var blockedCount     = 0
-        var notInstalledCount = 0
-        for (browserPackage in BLOCKED_BROWSERS) {
+    /**
+     * Dynamically finds and hides ALL browsers currently installed on the device,
+     * except Chrome. Works for any browser — known or unknown.
+     */
+    fun blockAllNonChromeBrowsers(): BlockResult {
+        var blockedCount = 0
+
+        // ── Step 1: Dynamic detection via intent resolution ───────────────────
+        // Ask the system "which apps can open a webpage?" — this catches every
+        // browser regardless of package name.
+        try {
+            val httpIntent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
+            val httpsIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))
+
+            val httpBrowsers = context.packageManager
+                .queryIntentActivities(httpIntent, PackageManager.MATCH_ALL)
+                .map { it.activityInfo.packageName }
+
+            val httpsBrowsers = context.packageManager
+                .queryIntentActivities(httpsIntent, PackageManager.MATCH_ALL)
+                .map { it.activityInfo.packageName }
+
+            val allDynamicBrowsers = (httpBrowsers + httpsBrowsers).toSet()
+
+            Log.d(TAG, "🔍 Dynamic browser scan found ${allDynamicBrowsers.size} candidates: $allDynamicBrowsers")
+
+            for (pkg in allDynamicBrowsers) {
+                if (pkg == CHROME_PACKAGE) continue
+                if (pkg == context.packageName) continue
+
+                val blocked = hideSingleBrowser(pkg)
+                if (blocked) {
+                    blockedCount++
+                    Log.d(TAG, "  ✅ Dynamically blocked: $pkg")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Dynamic browser scan failed: ${e.message}")
+        }
+
+        // ── Step 2: Known-list sweep (catches browsers with no default handler set) ─
+        for (pkg in KNOWN_BROWSERS) {
+            if (pkg == CHROME_PACKAGE) continue
             try {
-                context.packageManager.getPackageInfo(browserPackage, 0)
-                val hidden = devicePolicyManager.setApplicationHidden(adminComponent, browserPackage, true)
-                if (hidden) { blockedCount++; Log.d(TAG, "  ✅ Blocked: $browserPackage") }
-                else         Log.w(TAG, "  ⚠️ Failed to block: $browserPackage")
+                // Only attempt if installed
+                context.packageManager.getPackageInfo(pkg, 0)
+                val blocked = hideSingleBrowser(pkg)
+                if (blocked) {
+                    blockedCount++
+                    Log.d(TAG, "  ✅ Known-list blocked: $pkg")
+                }
+            } catch (e: PackageManager.NameNotFoundException) {
+                // Not installed — skip silently
             } catch (e: Exception) {
-                notInstalledCount++
+                Log.w(TAG, "  ⚠️ Could not block $pkg: ${e.message}")
             }
         }
-        Log.d(TAG, "Browser blocking: $blockedCount blocked, $notInstalledCount not installed")
-        return BlockResult(blockedCount, notInstalledCount)
+
+        Log.d(TAG, "Browser blocking complete: $blockedCount blocked")
+        return BlockResult(blockedCount, 0)
+    }
+
+    /**
+     * Hides a single browser package. Returns true if successfully hidden.
+     * Falls back to setPackagesSuspended if setApplicationHidden fails.
+     */
+    private fun hideSingleBrowser(packageName: String): Boolean {
+        return try {
+            // Primary: completely hide (removes from launcher)
+            val hidden = devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+            if (hidden) return true
+
+            // Fallback: suspend (greys out icon)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val failed = devicePolicyManager.setPackagesSuspended(
+                    adminComponent,
+                    arrayOf(packageName),
+                    true
+                )
+                failed.isEmpty() // empty array = all succeeded
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "hideSingleBrowser($packageName) failed: ${e.message}")
+            false
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RE-SCAN: called by FortressMonitorService periodically
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Re-scans for any browsers that escaped blocking (e.g. installed after fortress
+     * activation). Called by FortressMonitorService every few minutes.
+     */
+    fun reBlockAnyEscapedBrowsers() {
+        if (!deviceOwnerService.isDeviceOwner()) return
+        Log.d(TAG, "🔄 Re-scanning for escaped browsers…")
+        val result = blockAllNonChromeBrowsers()
+        Log.d(TAG, "Re-scan complete: ${result.blocked} browser(s) (re-)blocked")
     }
 
     // ═══════════════════════════════════════════════════════════════════
     // LAYER 4: KEYWORD DETECTION — Accessibility Service
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Enables [KeywordAccessibilityService] programmatically using Device Owner
-     * privileges. This does NOT require the user to visit Accessibility Settings.
-     *
-     * Uses DevicePolicyManager.setPermittedAccessibilityServices() to whitelist
-     * our service, then writes to Settings.Secure to enable it.
-     *
-     * @return true if the service was enabled successfully.
-     */
     private fun enableKeywordDetectionService(): Boolean {
         return try {
             if (!deviceOwnerService.isDeviceOwner()) {
@@ -279,22 +342,16 @@ class ContentFilteringService(private val context: Context) {
                 return false
             }
 
-            // Step 1: Whitelist our accessibility service via Device Policy
-            // Passing null means ALL services are permitted (most permissive).
-            // Passing an explicit list locks down to only those services.
-            // We allow all so existing accessibility tools (TalkBack etc.) still work.
             devicePolicyManager.setPermittedAccessibilityServices(adminComponent, null)
             Log.d(TAG, "  ✅ Accessibility services whitelisted")
 
-            // Step 2: Write the enabled services setting
-            // Format: "package/FullyQualifiedClassName"
             val currentEnabled = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ) ?: ""
 
             val newEnabled = if (currentEnabled.contains(A11Y_SERVICE)) {
-                currentEnabled   // already in the list
+                currentEnabled
             } else if (currentEnabled.isBlank()) {
                 A11Y_SERVICE
             } else {
@@ -308,7 +365,6 @@ class ContentFilteringService(private val context: Context) {
             )
             Log.d(TAG, "  ✅ ENABLED_ACCESSIBILITY_SERVICES updated")
 
-            // Step 3: Turn accessibility on globally (may already be on)
             Settings.Secure.putInt(
                 context.contentResolver,
                 Settings.Secure.ACCESSIBILITY_ENABLED,
@@ -328,9 +384,6 @@ class ContentFilteringService(private val context: Context) {
         }
     }
 
-    /**
-     * Returns true if [KeywordAccessibilityService] is currently enabled.
-     */
     fun isKeywordDetectionActive(): Boolean {
         return try {
             val enabled = Settings.Secure.getString(
@@ -347,11 +400,11 @@ class ContentFilteringService(private val context: Context) {
 
     fun getProtectionStatus(): ProtectionStatus {
         return ProtectionStatus(
-            dnsFilterActive       = isDnsFilterActive(),
-            chromeManagedActive   = isChromeManaged(),
-            browsersBlocked       = countBlockedBrowsers(),
+            dnsFilterActive        = isDnsFilterActive(),
+            chromeManagedActive    = isChromeManaged(),
+            browsersBlocked        = countBlockedBrowsers(),
             keywordDetectionActive = isKeywordDetectionActive(),
-            isFullyProtected      = isDnsFilterActive() && isChromeManaged() && isKeywordDetectionActive()
+            isFullyProtected       = isDnsFilterActive() && isChromeManaged() && isKeywordDetectionActive()
         )
     }
 
@@ -379,11 +432,35 @@ class ContentFilteringService(private val context: Context) {
         } catch (e: Exception) { false }
     }
 
+    /**
+     * Counts how many browsers are currently hidden by Device Owner.
+     * Uses dynamic detection so it counts browsers not in the hardcoded list.
+     */
     private fun countBlockedBrowsers(): Int {
         var count = 0
-        for (pkg in BLOCKED_BROWSERS) {
-            try { if (devicePolicyManager.isApplicationHidden(adminComponent, pkg)) count++ }
-            catch (_: Exception) {}
+        try {
+            val httpIntent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
+            val browsers = context.packageManager
+                .queryIntentActivities(httpIntent, PackageManager.MATCH_ALL)
+                .map { it.activityInfo.packageName }
+                .filter { it != CHROME_PACKAGE && it != context.packageName }
+                .toSet()
+
+            for (pkg in browsers) {
+                try {
+                    if (devicePolicyManager.isApplicationHidden(adminComponent, pkg)) count++
+                } catch (_: Exception) {}
+            }
+            // Also count from known list
+            for (pkg in KNOWN_BROWSERS) {
+                if (browsers.contains(pkg)) continue // already counted above
+                try {
+                    context.packageManager.getPackageInfo(pkg, 0)
+                    if (devicePolicyManager.isApplicationHidden(adminComponent, pkg)) count++
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "countBlockedBrowsers failed: ${e.message}")
         }
         return count
     }
@@ -427,7 +504,7 @@ class ContentFilteringService(private val context: Context) {
             appendLine("LAYER 2: CHROME MANAGEMENT")
             appendLine(if (s.chromeManagedActive) "✅ Active — All policies enforced" else "❌ INACTIVE")
             appendLine()
-            appendLine("LAYER 3: BROWSER BLOCKING")
+            appendLine("LAYER 3: BROWSER BLOCKING (Dynamic)")
             appendLine("✅ ${s.browsersBlocked} browsers blocked")
             appendLine()
             appendLine("LAYER 4: KEYWORD DETECTION")
@@ -453,7 +530,7 @@ data class ProtectionStatus(
     val dnsFilterActive        : Boolean,
     val chromeManagedActive    : Boolean,
     val browsersBlocked        : Int,
-    val keywordDetectionActive : Boolean,   // ← NEW field
+    val keywordDetectionActive : Boolean,
     val isFullyProtected       : Boolean
 )
 

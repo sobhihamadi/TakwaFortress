@@ -3,20 +3,23 @@ package com.example.takwafortress.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.util.Log
-import com.example.takwafortress.services.filtering.AppSuspensionService
 import com.example.takwafortress.services.filtering.BlockedAppsManager
-import com.example.takwafortress.services.monitoring.BrowserDetectionService
+import com.example.takwafortress.services.filtering.ContentFilteringService
 import com.example.takwafortress.util.constants.AppConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Package Change Receiver - Detects app installations/uninstallations.
- * Automatically blocks newly installed apps if they're in the custom blocked list.
+ * Package Change Receiver — Detects app installations and uninstallations.
+ *
+ * Key fix: browser detection now uses intent resolution (asking the system
+ * "can this app handle http:// URLs?") instead of a static package-name list.
+ * This catches ANY browser — including obscure or brand-new ones.
  */
 class PackageChangeReceiver : BroadcastReceiver() {
 
@@ -25,62 +28,92 @@ class PackageChangeReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
+        val action      = intent.action ?: return
         val packageName = intent.data?.schemeSpecificPart ?: return
 
-        Log.e(TAG, "🔥 PACKAGE EVENT RECEIVED: $action → $packageName")  // ADD THIS
+        Log.d(TAG, "📦 Package event: $action → $packageName")
 
         when (action) {
-            Intent.ACTION_PACKAGE_ADDED -> handlePackageAdded(context, packageName)
+            Intent.ACTION_PACKAGE_ADDED    -> handlePackageAdded(context, packageName)
             Intent.ACTION_PACKAGE_REPLACED -> handlePackageReplaced(context, packageName)
-            Intent.ACTION_PACKAGE_REMOVED -> handlePackageRemoved(context, packageName)
+            Intent.ACTION_PACKAGE_REMOVED  -> handlePackageRemoved(context, packageName)
         }
     }
 
-    /**
-     * Handles new package installation.
-     */
+    // ── Handlers ──────────────────────────────────────────────────────────────
+
     private fun handlePackageAdded(context: Context, packageName: String) {
-        val blockedAppsManager = BlockedAppsManager(context)
-        val browserDetectionService = BrowserDetectionService(context)
+        Log.d(TAG, "App installed: $packageName")
 
-        val isPreBlocked = blockedAppsManager.isPackageBlocked(packageName)
-        val isBrowser = browserDetectionService.isBrowserApp(packageName)
+        // Chrome is the only allowed browser — never touch it
+        if (packageName == ContentFilteringService.CHROME_PACKAGE) {
+            Log.d(TAG, "✅ Chrome installed — allowed, skipping")
+            return
+        }
 
-        // ✅ FIX: Skip Chrome — it's the allowed browser
-        val isChrome = packageName == "com.android.chrome"
+        val isBrowser   = isBrowserApp(context, packageName)
+        val isPreBlocked = BlockedAppsManager(context).isPackageBlocked(packageName)
 
-        if (!isChrome && (isPreBlocked || isBrowser)) {
-            // ✅ NO delay — block immediately
+        Log.d(TAG, "  isBrowser=$isBrowser  isPreBlocked=$isPreBlocked")
+
+        if (isBrowser || isPreBlocked) {
+            Log.w(TAG, "🚫 Blocking newly installed app: $packageName")
             autoBlockApp(context, packageName)
         }
     }
-    /**
-     * Handles package replacement (app update).
-     */
+
     private fun handlePackageReplaced(context: Context, packageName: String) {
-        val blockedAppsManager = BlockedAppsManager(context)
+        if (packageName == ContentFilteringService.CHROME_PACKAGE) return
 
-        if (blockedAppsManager.isPackageBlocked(packageName)) {
-            Log.w(TAG, "⚠️ Blocked app updated: $packageName - Re-applying blocks")
+        val isBrowser    = isBrowserApp(context, packageName)
+        val isPreBlocked = BlockedAppsManager(context).isPackageBlocked(packageName)
+
+        if (isBrowser || isPreBlocked) {
+            Log.w(TAG, "⚠️ Blocked app updated — re-applying block: $packageName")
             autoBlockApp(context, packageName)
         }
     }
 
-    /**
-     * Handles package removal.
-     */
     private fun handlePackageRemoved(context: Context, packageName: String) {
-        val blockedAppsManager = BlockedAppsManager(context)
-
-        if (blockedAppsManager.isPackageBlocked(packageName)) {
+        if (BlockedAppsManager(context).isPackageBlocked(packageName)) {
             Log.i(TAG, "✅ Blocked app uninstalled: $packageName")
         }
     }
 
+    // ── Dynamic browser detection ─────────────────────────────────────────────
+
     /**
-     * Automatically blocks a newly installed app.
+     * Returns true if [packageName] can handle http:// or https:// URLs.
+     * This is the reliable way to detect ANY browser without a hardcoded list.
      */
+    private fun isBrowserApp(context: Context, packageName: String): Boolean {
+        val pm = context.packageManager
+
+        // Test 1 — can it open http:// URLs?
+        val httpIntent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com")).apply {
+            setPackage(packageName)
+        }
+        val httpInfo = pm.resolveActivity(httpIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (httpInfo != null) {
+            Log.d(TAG, "  → $packageName handles http://")
+            return true
+        }
+
+        // Test 2 — can it open https:// URLs?
+        val httpsIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+            setPackage(packageName)
+        }
+        val httpsInfo = pm.resolveActivity(httpsIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (httpsInfo != null) {
+            Log.d(TAG, "  → $packageName handles https://")
+            return true
+        }
+
+        return false
+    }
+
+    // ── Block execution ───────────────────────────────────────────────────────
+
     private fun autoBlockApp(context: Context, packageName: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -96,20 +129,24 @@ class PackageChangeReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
-                // ✅ FIX: Use setApplicationHidden for ALL browsers (not suspend)
-                // Suspend only grays the icon — hidden completely removes it
+                // Primary: hide the app completely (invisible in launcher)
                 val hidden = dpm.setApplicationHidden(adminComponent, packageName, true)
                 Log.i(TAG, if (hidden) "✅ Hidden: $packageName" else "⚠️ Hide failed, trying suspend: $packageName")
 
                 if (!hidden) {
-                    // Fallback to suspend if hide fails (e.g. system browser)
-                    val failed = dpm.setPackagesSuspended(
-                        adminComponent,
-                        arrayOf(packageName),
-                        true
-                    )
-                    Log.i(TAG, if (failed.isEmpty()) "✅ Suspended: $packageName"
-                    else "❌ Both hide and suspend failed: $packageName")
+                    // Fallback: suspend (grey icon, still visible but unlaunchable)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        val failedPackages = dpm.setPackagesSuspended(
+                            adminComponent,
+                            arrayOf(packageName),
+                            true
+                        )
+                        if (failedPackages.isEmpty()) {
+                            Log.i(TAG, "✅ Suspended: $packageName")
+                        } else {
+                            Log.e(TAG, "❌ Both hide and suspend failed: $packageName")
+                        }
+                    }
                 }
 
             } catch (e: Exception) {

@@ -149,124 +149,56 @@ class FortressActivationService(private val context: Context) {
     ): RestrictionResult {
         val errors = mutableListOf<String>()
 
-        // ═══════════════════════════════════════
-        // 1. Block uninstallation of Taqwa itself
-        // ═══════════════════════════════════════
+        // 1. Block uninstall of Taqwa itself
         Log.i(TAG, "Blocking uninstall of Taqwa...")
         deviceOwnerService.blockUninstall().onFailure {
-            val error = "Failed to block uninstall: ${it.message}"
-            Log.e(TAG, "❌ $error")
-            errors.add(error)
+            errors.add("Failed to block uninstall: ${it.message}")
         }.onSuccess {
             Log.i(TAG, "✅ Uninstall blocked")
         }
 
-        // ═══════════════════════════════════════
         // 2. Hide nuclear blacklist apps
-        // ═══════════════════════════════════════
         val nuclearApps = policy.getBlockedApps().filter {
             it in BlockedPackages.NUCLEAR_BLACKLIST
         }
-
         if (nuclearApps.isNotEmpty()) {
             Log.i(TAG, "Hiding ${nuclearApps.size} nuclear apps...")
             deviceOwnerService.hideApps(nuclearApps).onFailure {
-                val error = "Failed to hide nuclear apps: ${it.message}"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
+                errors.add("Failed to hide nuclear apps: ${it.message}")
             }.onSuccess {
                 Log.i(TAG, "✅ Nuclear apps hidden: ${nuclearApps.joinToString()}")
             }
         }
 
-        // ═══════════════════════════════════════
-        // 3. Suspend other browsers
-        // ═══════════════════════════════════════
-        val browsers = policy.getBlockedApps().filter {
-            it in BlockedPackages.BROWSERS && it !in BlockedPackages.NUCLEAR_BLACKLIST
-        }
+        // 3. ✅ FIXED: Block ALL non-Chrome browsers dynamically
+        Log.i(TAG, "Blocking ALL non-Chrome browsers (dynamic detection)...")
+        val browserBlockResult = contentFilteringService.blockAllNonChromeBrowsers()
+        Log.i(TAG, "✅ ${browserBlockResult.blocked} browsers blocked")
 
-        if (browsers.isNotEmpty()) {
-            Log.i(TAG, "Suspending ${browsers.size} browsers...")
-            deviceOwnerService.suspendApps(browsers).onFailure {
-                val error = "Failed to suspend browsers: ${it.message}"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
-            }.onSuccess {
-                Log.i(TAG, "✅ Browsers suspended: ${browsers.joinToString()}")
-            }
-
-        }
-        val browserDetectionService = BrowserDetectionService(context)
-        val allInstalled = context.packageManager.getInstalledPackages(0)
-            .map { it.packageName }
-            .filter { pkg ->
-                pkg != ContentFilteringService.CHROME_PACKAGE &&
-                        pkg != context.packageName &&
-                        browserDetectionService.isBrowserApp(pkg)
-            }
-
-        if (allInstalled.isNotEmpty()) {
-            deviceOwnerService.suspendApps(allInstalled)
-        }
-
-        // ═══════════════════════════════════════
         // 4. Force automatic time
-        // ═══════════════════════════════════════
         Log.i(TAG, "Forcing automatic time...")
         deviceOwnerService.forceAutoTime().onFailure {
-            val error = "Failed to force auto time: ${it.message}"
-            Log.e(TAG, "❌ $error")
-            errors.add(error)
+            errors.add("Failed to force auto time: ${it.message}")
         }.onSuccess {
             Log.i(TAG, "✅ Automatic time enforced")
         }
 
-        // ═══════════════════════════════════════
         // 5. Activate 3-Layer Content Filtering
-        // ═══════════════════════════════════════
-        Log.i(TAG, "Activating 3-layer content filtering...")
-        Log.i(TAG, "  Layer 1: DNS filtering (CleanBrowsing)")
-        Log.i(TAG, "  Layer 2: Chrome SafeSearch enforcement")
-        Log.i(TAG, "  Layer 3: Browser blocking")
-
+        Log.i(TAG, "Activating content filtering...")
         val contentFilterResult = contentFilteringService.activateFullProtection()
-
         when (contentFilterResult) {
-            is ContentFilterResult.Success -> {
-                Log.i(TAG, "✅ Content filtering activated successfully")
-                Log.i(TAG, "Details: ${contentFilterResult.details}")
-
-                // Update policy to reflect DNS is now forced
-                // Note: Since updateDnsStatus doesn't exist in the repository,
-                // we skip this step. The policy's isDnsForced flag will be
-                // managed through the policy builder in future updates.
-            }
-
-            is ContentFilterResult.DeviceOwnerRequired -> {
-                val error = "Content filtering requires Device Owner"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
-            }
-
-            is ContentFilterResult.Failed -> {
-                val error = "Content filtering failed: ${contentFilterResult.reason}"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
-            }
+            is ContentFilterResult.Success ->
+                Log.i(TAG, "✅ Content filtering activated: ${contentFilterResult.details}")
+            is ContentFilterResult.DeviceOwnerRequired ->
+                errors.add("Content filtering requires Device Owner")
+            is ContentFilterResult.Failed ->
+                errors.add("Content filtering failed: ${contentFilterResult.reason}")
         }
 
-        // ═══════════════════════════════════════
-        // Return result
-        // ═══════════════════════════════════════
-        return if (errors.isEmpty()) {
-            Log.i(TAG, "✅ All restrictions applied successfully")
-            RestrictionResult.Success
-        } else {
-            Log.e(TAG, "⚠️ Some restrictions failed (${errors.size} errors)")
-            RestrictionResult.Failure(errors)
-        }
+        return if (errors.isEmpty()) RestrictionResult.Success
+        else RestrictionResult.Failure(errors)
     }
+
 
     /**
      * Deactivates the fortress (only allowed if period has expired).
