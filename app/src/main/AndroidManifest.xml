@@ -18,7 +18,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Device Admin & System Permissions -->
-
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!-- Service Permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -78,7 +79,6 @@
             android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.TaqwaFortress" />
-
 
 
         <activity
@@ -206,7 +206,14 @@
 
 
         <!-- Fortress Monitor Service -->
-
+        <service
+            android:name=".services.monitoring.FortressMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental_control" />
+        </service>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
