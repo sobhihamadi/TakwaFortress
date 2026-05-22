@@ -252,7 +252,6 @@ class ContentFilteringService(private val context: Context) {
                 addCategory(Intent.CATEGORY_BROWSABLE)
             }
 
-            // Query all activities capable of resolving web URLs
             val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.queryIntentActivities(
                     intent,
@@ -263,25 +262,17 @@ class ContentFilteringService(private val context: Context) {
                 context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_ALL)
             }
 
-            // Extract unique package names
             val installedBrowsers = resolveInfos.map { it.activityInfo.packageName }.toSet()
 
             for (packageName in installedBrowsers) {
-                // Keep Chrome and your own app safe
                 if (packageName == CHROME_PACKAGE || packageName == context.packageName) {
                     skippedCount++
                     continue
                 }
 
                 try {
-                    // Use Device Owner privilege to hide the app completely
                     val hidden = devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
-                    if (hidden) {
-                        blockedCount++
-                        Log.d(TAG, "🛡️ Dynamically blocked browser package: $packageName")
-                    } else {
-                        Log.w(TAG, "⚠️ Failed to hide browser package: $packageName")
-                    }
+                    if (hidden) blockedCount++
                 } catch (e: Exception) {
                     Log.e(TAG, "❌ Error hiding package: $packageName", e)
                 }
@@ -290,7 +281,6 @@ class ContentFilteringService(private val context: Context) {
             Log.e(TAG, "❌ Dynamic browser scanning failed", e)
         }
 
-        Log.d(TAG, "Dynamic scan: $blockedCount blocked, $skippedCount preserved (Chrome/System)")
         return BlockResult(blockedCount, skippedCount)
     }
     // ═══════════════════════════════════════════════════════════════════
