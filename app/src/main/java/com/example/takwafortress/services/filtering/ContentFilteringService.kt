@@ -479,6 +479,17 @@ class ContentFilteringService(private val context: Context) {
             false
         }
     }
+    // Add inside ContentFilteringService class, after BLOCKED_BROWSERS definition
+
+    /**
+     * Returns true if [packageName] is in our hardcoded known-browsers list.
+     * This check works immediately on PACKAGE_ADDED, before PackageManager
+     * has finished indexing the new app's intent filters.
+     */
+    fun isKnownBrowserPackage(packageName: String): Boolean {
+        return packageName in BLOCKED_BROWSERS
+    }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════
