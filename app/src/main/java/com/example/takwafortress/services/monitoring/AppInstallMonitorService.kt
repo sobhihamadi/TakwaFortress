@@ -101,6 +101,24 @@ class AppInstallMonitorService(private val context: Context) {
         scope.launch {
             try {
                 Log.d(TAG, "App installed: $packageName")
+                // ── NEW: Auto-block browsers ──────────────────────────────────────
+                if (deviceOwnerService.isDeviceOwner()) {
+                    val filteringService =
+                        com.example.takwafortress.services.filtering.ContentFilteringService(context)
+
+                    // Phase 1 — instant block if it's a known browser (no PM query needed)
+                    if (filteringService.isKnownBrowserPackage(packageName)) {
+                        Log.w(TAG, "🌐 Known browser installed: $packageName — blocking immediately")
+                        filteringService.hideBrowserPackage(packageName)
+                        showBlockNotification("Browser auto-blocked")
+                    }
+
+                    // Phase 2 — wait 3s for PackageManager to finish indexing,
+                    // then run the same full scan the button runs
+                    kotlinx.coroutines.delay(3_000L)
+                    val result = filteringService.blockOtherBrowsersDynamic()
+                    Log.i(TAG, "Browser re-scan: ${result.blocked} blocked")
+                }
 
                 val isBlocked = repository.isAppBlocked(packageName)
 
