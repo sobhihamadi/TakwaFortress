@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.example.takwafortress.services.filtering.ContentFilteringService
 import com.example.takwafortress.util.constants.AppConstants
 
 /**
@@ -44,28 +45,28 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
     private fun handleBootDelayed(context: Context) {
         try {
-            Log.i(TAG, "Boot delay complete — checking device state")
+            if (!isDeviceOwnerActive(context)) return
 
-            // ✅ RULE: Only start services if Device Owner is active
-            // If user never completed setup, do nothing at all
-            if (!isDeviceOwnerActive(context)) {
-                Log.i(TAG, "Device Owner not active — skipping all service starts")
-                return
-            }
-
-            Log.i(TAG, "Device Owner active — starting protection services")
-
-            // ✅ RULE: Start ONE service only
-            // ContentFilteringService is responsible for chaining
-            // other services — do not start multiple here
             startProtectionService(context)
+
+            // ✅ SAFE: wrapped in try/catch, never throws upward
+            try {
+                ContentFilteringService(context).blockOtherBrowsersDynamic()
+            } catch (e: Exception) {
+                Log.e(TAG, "Browser re-block failed — non-fatal: ${e.message}")
+                // intentionally swallowed — never crash the boot receiver
+            }
 
         } catch (e: Exception) {
             // ✅ RULE: Never crash during boot
-            // Log the error and exit gracefully
-            Log.e(TAG, "Boot handler failed — device will work normally: ${e.message}")
+            Log.e(TAG, "Boot handler failed: ${e.message}")
         }
     }
+
+
+
+
+
 
     private fun isDeviceOwnerActive(context: Context): Boolean {
         return try {

@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import com.example.takwafortress.services.core.DeviceOwnerService
 import com.example.takwafortress.services.filtering.ContentFilteringService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,14 +41,11 @@ class PackageInstallReceiver : BroadcastReceiver() {
                     val filteringService = ContentFilteringService(context)
 
                     // Only enforce rules if content filtering is currently activated
-                    if (filteringService.getProtectionStatus().chromeManagedActive) {
-
+                    // In PackageInstallReceiver, replace the condition:
+                    if (filteringService.getProtectionStatus().chromeManagedActive ||
+                        DeviceOwnerService(context).isDeviceOwner()) {
                         if (isTargetPackageABrowser(context, packageName)) {
-                            Log.d(TAG, "🚨 Browser properties confirmed for: $packageName. Hiding application...")
-                            val hidden = filteringService.hideBrowserPackage(packageName)
-                            if (hidden) {
-                                Log.d(TAG, "🔒 Target package successfully hidden from launcher.")
-                            }
+                            filteringService.blockOtherBrowsersDynamic()
                         }
                     }
                 } catch (e: Exception) {
