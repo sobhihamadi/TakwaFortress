@@ -47,6 +47,8 @@ class PackageInstallReceiver : BroadcastReceiver() {
                     val adminComponent = ComponentName(
                         context,
                         DeviceAdminReceiver::class.java
+
+
                     )
 
                     if (!dpm.isDeviceOwnerApp(context.packageName)) {
