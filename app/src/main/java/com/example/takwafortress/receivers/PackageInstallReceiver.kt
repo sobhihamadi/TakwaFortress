@@ -38,22 +38,26 @@ class PackageInstallReceiver : BroadcastReceiver() {
 
             CoroutineScope(Dispatchers.Default).launch {
                 try {
-                    val filteringService = ContentFilteringService(context)
+                    val deviceOwnerService = DeviceOwnerService(context)
 
-                    // Only enforce rules if content filtering is currently activated
-                    // In PackageInstallReceiver, replace the condition:
-                    if (filteringService.getProtectionStatus().chromeManagedActive ||
-                        DeviceOwnerService(context).isDeviceOwner()) {
-                        if (isTargetPackageABrowser(context, packageName)) {
-                            filteringService.blockOtherBrowsersDynamic()
-                        }
+                    // ✅ Only check Device Owner — not chromeManagedActive
+                    if (!deviceOwnerService.isDeviceOwner()) {
+                        pendingResult.finish()
+                        return@launch
                     }
+
+                    if (isTargetPackageABrowser(context, packageName)) {
+                        Log.d(TAG, "🚨 Browser detected: $packageName — blocking...")
+                        val filteringService = ContentFilteringService(context)
+                        filteringService.hideBrowserPackage(packageName)
+                    }
+
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Error analyzing package installation details", e)
+                    Log.e(TAG, "❌ Error", e)
                 } finally {
-                    // ⚠️ CRITICAL: Signals the OS that processing is done and resources can be recycled
                     pendingResult.finish()
                 }
+
             }
         }
     }

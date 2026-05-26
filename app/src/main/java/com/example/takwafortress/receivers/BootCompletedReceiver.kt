@@ -83,19 +83,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
     private fun startProtectionService(context: Context) {
         try {
-            // Import your actual ContentFilteringService here
-            val serviceIntent = Intent().apply {
-                setClassName(
-                    context.packageName,
-                    "${context.packageName}.services.filtering.ContentFilteringService"
-                )
-                putExtra("started_from_boot", true)
-            }
-            Log.i(TAG, "ContentFilteringService start requested")
+            // Re-block all browsers on boot
+            ContentFilteringService(context).blockOtherBrowsersDynamic()
+            Log.i(TAG, "✅ Browser re-block on boot complete")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ContentFilteringService: ${e.message}")
-            // Do not crash — protection simply won't start this boot
-            // User will see protection inactive on dashboard
+            Log.e(TAG, "Browser re-block failed: ${e.message}")
         }
     }
 }
