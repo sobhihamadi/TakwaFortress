@@ -1,6 +1,9 @@
 package com.example.takwafortress.receivers
 
+import android.annotation.SuppressLint
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,48 +22,52 @@ class PackageInstallReceiver : BroadcastReceiver() {
         private const val TAG = "PackageInstallReceiver"
     }
 
+    @SuppressLint("ServiceCast")
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         val dataUri = intent.data
 
-        if ((action == Intent.ACTION_PACKAGE_ADDED || action == Intent.ACTION_PACKAGE_REPLACED) && dataUri != null) {
+        if ((action == Intent.ACTION_PACKAGE_ADDED ||
+                    action == Intent.ACTION_PACKAGE_REPLACED) && dataUri != null
+        ) {
+
             val packageName = dataUri.schemeSpecificPart
 
-            // Bypass security loops for Chrome and your own monitoring application
-            if (packageName == ContentFilteringService.CHROME_PACKAGE || packageName == context.packageName) {
-                return
-            }
+            if (packageName == ContentFilteringService.CHROME_PACKAGE ||
+                packageName == context.packageName
+            ) return
 
-            Log.d(TAG, "📦 Package change detected: $packageName")
-
-            // ⚠️ CRITICAL: Instructs Android to keep the process alive for async execution
             val pendingResult = goAsync()
 
             CoroutineScope(Dispatchers.Default).launch {
                 try {
-                    val deviceOwnerService = DeviceOwnerService(context)
+                    // ✅ Only check Device Owner — remove chromeManagedActive entirely
+                    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                            as DevicePolicyManager
+                    val adminComponent = ComponentName(
+                        context,
+                        DeviceAdminReceiver::class.java
+                    )
 
-                    // ✅ Only check Device Owner — not chromeManagedActive
-                    if (!deviceOwnerService.isDeviceOwner()) {
-                        pendingResult.finish()
+                    if (!dpm.isDeviceOwnerApp(context.packageName)) {
                         return@launch
                     }
 
                     if (isTargetPackageABrowser(context, packageName)) {
-                        Log.d(TAG, "🚨 Browser detected: $packageName — blocking...")
-                        val filteringService = ContentFilteringService(context)
-                        filteringService.hideBrowserPackage(packageName)
+                        Log.d(TAG, "🚨 Browser installed: $packageName — blocking")
+                        dpm.setApplicationHidden(adminComponent, packageName, true)
+                        Log.d(TAG, "✅ Blocked: $packageName")
                     }
 
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Error", e)
+                    Log.e(TAG, "❌ Error blocking browser", e)
                 } finally {
                     pendingResult.finish()
                 }
-
             }
         }
     }
+
 
     /**
      * Determines browser capabilities by pointing a web intent target directly at the new package
