@@ -5,6 +5,10 @@ on:
     branches:
       - "**"
 
+# FIX: Force all Javascript actions to use Node 24 to bypass the May/June 2026 deprecation blocks
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: write
 
