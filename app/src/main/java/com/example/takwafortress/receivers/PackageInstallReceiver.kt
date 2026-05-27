@@ -49,9 +49,13 @@ class PackageInstallReceiver : BroadcastReceiver() {
                         DeviceAdminReceiver::class.java
 
 
+
+
+
                     )
 
                     if (!dpm.isDeviceOwnerApp(context.packageName)) {
+
                         return@launch
                     }
 
