@@ -21,6 +21,8 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.example.takwafortress.services.monitoring.FortressMonitorService
+
 
 class FortressClearService(private val context: Context) {
 
@@ -179,6 +181,17 @@ class FortressClearService(private val context: Context) {
             devicePolicyManager.setUninstallBlocked(adminComponent, context.packageName, false)
             Log.i(TAG, "✅ Uninstall unblocked")
         } catch (e: Exception) { Log.w(TAG, "Unblock uninstall: ${e.message}") }
+
+
+
+        // ── Step 10b: Stop the monitor service ────────────────────────────
+        Log.i(TAG, "Step 10b: Stopping FortressMonitorService...")
+        try {
+            FortressMonitorService.stop(context)
+            Log.i(TAG, "✅ FortressMonitorService stopped")
+        } catch (e: Exception) {
+            Log.w(TAG, "Stop monitor service: ${e.message}")
+        }
 
         // ── Step 11: Clear local data ─────────────────────────────────
         Log.i(TAG, "Step 11: Clearing local data...")

@@ -92,10 +92,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startUpdateCheckThenRoute() {
-        // ✅ Hard guard — if a check is already running, do nothing
         if (isCheckInProgress) return
         isCheckInProgress = true
 
+        // ── UPDATE CHECK TEMPORARILY DISABLED ──────────────────────────
+        // To re-enable, uncomment the block below and delete the 3 lines under it.
+        /*
         lifecycleScope.launch {
             try {
                 val checker = UpdateChecker(this@MainActivity)
@@ -103,7 +105,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (update != null) {
                     isUpdatePending   = true
-                    isCheckInProgress = false   // allow re-check after installer returns
+                    isCheckInProgress = false
                     checker.showUpdateDialog(this@MainActivity, update)
                 } else {
                     isUpdatePending   = false
@@ -117,6 +119,11 @@ class MainActivity : AppCompatActivity() {
                 viewModel.resolveRoute()
             }
         }
+        */
+        isCheckInProgress = false
+        viewModel.clearCache()
+        viewModel.resolveRoute()
+        // ───────────────────────────────────────────────────────────────
     }
 
     private fun navigateTo(activityClass: Class<*>) {

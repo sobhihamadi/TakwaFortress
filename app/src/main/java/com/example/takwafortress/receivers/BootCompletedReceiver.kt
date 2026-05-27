@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import com.example.takwafortress.services.filtering.ContentFilteringService
 import com.example.takwafortress.util.constants.AppConstants
+import com.example.takwafortress.services.monitoring.FortressMonitorService
 
 /**
  * Boot Completed Receiver
@@ -26,7 +27,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "${AppConstants.LOG_TAG}_BootReceiver"
-        private const val BOOT_DELAY_MS = 15_000L // 15 seconds — gives Android time to fully initialize
+        private const val BOOT_DELAY_MS =
+            15_000L // 15 seconds — gives Android time to fully initialize
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -49,18 +51,25 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
             startProtectionService(context)
 
-            // ✅ SAFE: wrapped in try/catch, never throws upward
+            // ✅ NEW: Restart the persistent monitor service on boot so
+            // Layer 3 (auto-block new browsers) is live again after reboot.
+            try {
+                FortressMonitorService.start(context)
+                Log.i(TAG, "✅ FortressMonitorService restarted on boot")
+            } catch (e: Exception) {
+                Log.e(TAG, "FortressMonitorService boot start failed — non-fatal: ${e.message}")
+            }
+
             try {
                 ContentFilteringService(context).blockOtherBrowsersDynamic()
             } catch (e: Exception) {
                 Log.e(TAG, "Browser re-block failed — non-fatal: ${e.message}")
-                // intentionally swallowed — never crash the boot receiver
             }
 
         } catch (e: Exception) {
-            // ✅ RULE: Never crash during boot
             Log.e(TAG, "Boot handler failed: ${e.message}")
         }
+
     }
 
 

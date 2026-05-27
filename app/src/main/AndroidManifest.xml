@@ -60,6 +60,7 @@
         <!-- ============================================ -->
         <!-- MAIN LAUNCHER ACTIVITY                       -->
         <!-- ============================================ -->
+
         <activity
             android:name=".ui.activities.MainActivity"
             android:exported="true"
@@ -242,16 +243,20 @@
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
-
-        <!-- Fortress Monitor Service -->
         <service
             android:name=".services.monitoring.FortressMonitorService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="parental_control" />
         </service>
+
+
+
+        <!-- Fortress Monitor Service -->
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

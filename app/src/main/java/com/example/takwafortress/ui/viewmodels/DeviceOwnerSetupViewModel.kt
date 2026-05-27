@@ -23,6 +23,8 @@ import com.example.takwafortress.services.security.WirelessAdbResult
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
+import com.example.takwafortress.services.monitoring.FortressMonitorService
+
 
 class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -151,10 +153,6 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
 
     // ── Firestore ─────────────────────────────────────────────────────────────
 
-    fun saveDeviceOwnerToFirestore() {
-        viewModelScope.launch { saveHasDeviceOwnerToFirestore() }
-    }
-
     private suspend fun saveHasDeviceOwnerToFirestore() {
         try {
             val userId = auth.currentUser?.uid ?: run {
@@ -184,11 +182,20 @@ class DeviceOwnerSetupViewModel(application: Application) : AndroidViewModel(app
             userRepository.setCurrentUser(updatedIdentifierUser)
             Log.d(TAG, "✅ hasDeviceOwner = true saved to Firestore")
 
+            // ✅ NEW: Device Owner just confirmed — start the persistent
+            // browser-blocking monitor service right now.
+            FortressMonitorService.start(getApplication())
+            Log.d(TAG, "✅ FortressMonitorService started after Device Owner activation")
+
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to save hasDeviceOwner: ${e.message}")
         }
     }
 
+    // Already exists in DeviceOwnerSetupViewModel.kt
+    fun saveDeviceOwnerToFirestore() {
+        viewModelScope.launch { saveHasDeviceOwnerToFirestore() }
+    }
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fun getSetupInstructions(): String = when (_activationMethod.value) {

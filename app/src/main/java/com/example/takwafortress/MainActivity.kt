@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import com.example.takwafortress.services.core.DeviceOwnerService
 import com.example.takwafortress.services.monitoring.AppInstallMonitorService
+import com.example.takwafortress.services.monitoring.FortressMonitorService
 import com.example.takwafortress.util.constants.AppConstants
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
@@ -78,6 +79,15 @@ class TaqwaApplication : Application() {
     private fun initializeServices() {
         Log.i(TAG, "Initializing services...")
         appInstallMonitorService.startMonitoring()
+
+        // ✅ NEW: If Device Owner is already active (fortress is live),
+        // start the persistent browser-blocking monitor immediately.
+        // This covers: cold app launch, process restart after ADB activation,
+        // and any scenario where the app restarts while fortress is active.
+        if (deviceOwnerService.isDeviceOwner()) {
+            FortressMonitorService.start(this)
+            Log.i(TAG, "✅ FortressMonitorService started (Device Owner is active)")
+        }
 
         Log.i(TAG, "Services initialized")
     }
