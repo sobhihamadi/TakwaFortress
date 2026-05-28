@@ -40,11 +40,21 @@ class PackageChangeReceiver : BroadcastReceiver() {
     private fun handlePackageAdded(context: Context, packageName: String) {
         val blockedAppsManager = BlockedAppsManager(context)
 
-        if (blockedAppsManager.isPackageBlocked(packageName)) {
-            Log.w(TAG, "⚠️ Blocked app installed: $packageName - Auto-blocking")
+        // ✅ FIX: Check both the custom blocklist AND dynamic browser detection
+        val isInBlockList = blockedAppsManager.isPackageBlocked(packageName)
+        val isBrowser = isNewBrowserPackage(context, packageName)
+
+        if (isInBlockList || isBrowser) {
+            Log.w(TAG, "⚠️ Blocked/browser app installed: $packageName — Auto-blocking")
             autoBlockApp(context, packageName)
+
+            // Persist to BlockedAppsManager so it's caught next time too
+            if (isBrowser) {
+                blockedAppsManager.addBlockedPackage(packageName)
+            }
         }
     }
+
 
     /**
      * Handles package replacement (app update).
@@ -61,6 +71,30 @@ class PackageChangeReceiver : BroadcastReceiver() {
     /**
      * Handles package removal.
      */
+    private fun isNewBrowserPackage(context: Context, packageName: String): Boolean {
+        if (packageName == "com.android.chrome" || packageName == context.packageName) return false
+        return try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse("https://www.google.com")
+                addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+                setPackage(packageName)
+            }
+            val matches = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    intent,
+                    android.content.pm.PackageManager.ResolveInfoFlags.of(
+                        android.content.pm.PackageManager.MATCH_ALL.toLong()
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(
+                    intent, android.content.pm.PackageManager.MATCH_ALL
+                )
+            }
+            matches.isNotEmpty()
+        } catch (e: Exception) { false }
+    }
     private fun handlePackageRemoved(context: Context, packageName: String) {
         val blockedAppsManager = BlockedAppsManager(context)
 

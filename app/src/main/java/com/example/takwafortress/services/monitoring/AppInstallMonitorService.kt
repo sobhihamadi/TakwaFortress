@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.util.Log
 import com.example.takwafortress.repository.implementations.LocalBlockedAppRepository
 import com.example.takwafortress.services.core.DeviceOwnerService
+import com.example.takwafortress.services.filtering.BlockedAppsManager
 import com.example.takwafortress.util.constants.AppConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -102,19 +103,22 @@ class AppInstallMonitorService(private val context: Context) {
             try {
                 Log.d(TAG, "App installed: $packageName")
 
+                // ✅ FIX: Also check if this is a browser, even if not in repository yet
+                val isBrowserApp = isBrowserPackage(packageName)
                 val isBlocked = repository.isAppBlocked(packageName)
+                val isInBlockedAppsManager = BlockedAppsManager(context).isPackageBlocked(packageName)
 
-                if (isBlocked) {
-                    Log.w(TAG, "⚠️ Blocked app detected: $packageName")
-                    val blockedApp = repository.getByPackageName(packageName)
+                if (isBlocked || isInBlockedAppsManager || isBrowserApp) {
+                    if (deviceOwnerService.isDeviceOwner()) {
+                        val isNuclear = com.example.takwafortress.model.entities.BlockedApp
+                            .isNuclearApp(packageName)
+                        blockAppNow(packageName, isNuclear)
 
-                    if (blockedApp.getIsPreBlocked() || !blockedApp.getIsInstalled()) {
-                        Log.i(TAG, "🚫 Auto-blocking pre-blocked app: ${blockedApp.getAppName()}")
-
-                        if (deviceOwnerService.isDeviceOwner()) {
-                            blockAppNow(packageName, blockedApp.isBlacklistedApp())
-
-                            val updatedApp = com.example.takwafortress.model.builders.IdentifierBlockedAppBuilder.newBuilder()
+                        // ✅ FIX: Update or create repository entry with correct state
+                        if (isBlocked) {
+                            val blockedApp = repository.getByPackageName(packageName)
+                            val updatedApp = com.example.takwafortress.model.builders
+                                .IdentifierBlockedAppBuilder.newBuilder()
                                 .setId(blockedApp.getId())
                                 .setBlockedApp(
                                     com.example.takwafortress.model.builders.BlockedAppBuilder.newBuilder()
@@ -122,18 +126,20 @@ class AppInstallMonitorService(private val context: Context) {
                                         .setAppName(blockedApp.getAppName())
                                         .setIsSystemApp(blockedApp.getIsSystemApp())
                                         .setIsSuspended(true)
-                                        .setBlockReason("Auto-blocked on install")
-                                        .setDetectedDate(System.currentTimeMillis())
+                                        .setBlockReason(blockedApp.getBlockReason())
+                                        .setDetectedDate(blockedApp.getDetectedDate())
+                                        .setIsInstalled(true)   // ✅ mark as installed
+                                        .setIsPreBlocked(blockedApp.getIsPreBlocked())
                                         .build()
-                                )
-                                .build()
-
+                                ).build()
                             repository.update(updatedApp)
-                            Log.i(TAG, "✅ Successfully auto-blocked ${blockedApp.getAppName()}")
-                            showBlockNotification(blockedApp.getAppName())
-                        } else {
-                            Log.e(TAG, "❌ Device Owner required to block apps")
                         }
+
+                        // Ensure it's also in BlockedAppsManager for future manifest receivers
+                        BlockedAppsManager(context).addBlockedPackage(packageName)
+
+                        Log.i(TAG, "✅ Auto-blocked on reinstall: $packageName")
+                        showBlockNotification(packageName)
                     }
                 }
             } catch (e: Exception) {
@@ -141,7 +147,30 @@ class AppInstallMonitorService(private val context: Context) {
             }
         }
     }
-
+    // ✅ NEW helper — dynamic browser detection (same logic as FortressMonitorService)
+    private fun isBrowserPackage(packageName: String): Boolean {
+        return try {
+            val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse("https://www.google.com")
+                addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+                setPackage(packageName)
+            }
+            val matches = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.queryIntentActivities(
+                    webIntent,
+                    android.content.pm.PackageManager.ResolveInfoFlags.of(
+                        android.content.pm.PackageManager.MATCH_ALL.toLong()
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.queryIntentActivities(
+                    webIntent, android.content.pm.PackageManager.MATCH_ALL
+                )
+            }
+            matches.isNotEmpty()
+        } catch (e: Exception) { false }
+    }
     private fun blockAppNow(packageName: String, isNuclear: Boolean) {
         try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
@@ -195,18 +224,38 @@ class AppInstallMonitorService(private val context: Context) {
         }
     }
 
+
     private fun onAppUninstalled(packageName: String) {
         scope.launch {
             try {
+                // ✅ FIX: Update isInstalled = false so future installs are blocked
                 val isBlocked = repository.isAppBlocked(packageName)
                 if (isBlocked) {
-                    Log.i(TAG, "Blocked app uninstalled: $packageName (keeping in block list)")
+                    val blockedApp = repository.getByPackageName(packageName)
+                    val updatedApp = com.example.takwafortress.model.builders
+                        .IdentifierBlockedAppBuilder.newBuilder()
+                        .setId(blockedApp.getId())
+                        .setBlockedApp(
+                            com.example.takwafortress.model.builders.BlockedAppBuilder.newBuilder()
+                                .setPackageName(blockedApp.getPackageName())
+                                .setAppName(blockedApp.getAppName())
+                                .setIsSystemApp(blockedApp.getIsSystemApp())
+                                .setIsSuspended(false)
+                                .setBlockReason(blockedApp.getBlockReason())
+                                .setDetectedDate(blockedApp.getDetectedDate())
+                                .setIsInstalled(false)       // ✅ mark as uninstalled
+                                .setIsPreBlocked(true)       // ✅ treat as pre-blocked for re-install
+                                .build()
+                        ).build()
+                    repository.update(updatedApp)
+                    Log.i(TAG, "Marked $packageName as uninstalled, will re-block on reinstall")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling app uninstall: $packageName", e)
             }
         }
     }
+
 
     fun applyAllBlocks() {
         scope.launch {

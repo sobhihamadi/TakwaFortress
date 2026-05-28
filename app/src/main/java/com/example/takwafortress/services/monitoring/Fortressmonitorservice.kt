@@ -17,7 +17,9 @@ import android.os.IBinder
 import android.util.Log
 import com.example.takwafortress.receivers.DeviceAdminReceiver
 import com.example.takwafortress.services.core.DeviceOwnerService
+import com.example.takwafortress.services.filtering.BlockedAppsManager
 import com.example.takwafortress.services.filtering.ContentFilteringService
+import kotlinx.coroutines.launch
 
 /**
  * FortressMonitorService
@@ -131,7 +133,6 @@ class FortressMonitorService : Service() {
      * it is hidden immediately via Device Owner API.
      */
     private fun onPackageInstalled(packageName: String) {
-        // Skip our own app and Chrome
         if (packageName == applicationContext.packageName) return
         if (packageName == CHROME_PACKAGE) return
 
@@ -144,9 +145,58 @@ class FortressMonitorService : Service() {
             val blocked = hidePackage(packageName)
             if (blocked) {
                 Log.i(TAG, "🛡️ Auto-blocked new browser: $packageName")
+
+                // ✅ FIX: Persist to BlockedAppsManager so other monitors
+                // know to re-block this package if it's ever reinstalled
+                BlockedAppsManager(applicationContext).addBlockedPackage(packageName)
+
+                // ✅ FIX: Also save to LocalBlockedAppRepository with correct flags
+                persistBlockedBrowser(packageName)
             } else {
                 Log.w(TAG, "⚠️ Failed to hide browser: $packageName")
             }
+        }
+    }
+
+    private fun persistBlockedBrowser(packageName: String) {
+        try {
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+            scope.launch {
+                try {
+                    val repo = com.example.takwafortress.repository.implementations
+                        .LocalBlockedAppRepository(applicationContext)
+
+                    if (repo.isAppBlocked(packageName)) return@launch // already there
+
+                    val appName = try {
+                        val info = packageManager.getApplicationInfo(packageName, 0)
+                        packageManager.getApplicationLabel(info).toString()
+                    } catch (e: Exception) { packageName }
+
+                    val blockedApp = com.example.takwafortress.model.builders
+                        .IdentifierBlockedAppBuilder.newBuilder()
+                        .setId(java.util.UUID.randomUUID().toString())
+                        .setBlockedApp(
+                            com.example.takwafortress.model.builders.BlockedAppBuilder.newBuilder()
+                                .setPackageName(packageName)
+                                .setAppName(appName)
+                                .setIsSystemApp(false)
+                                .setIsSuspended(false)
+                                .setBlockReason("Auto-detected browser")
+                                .setDetectedDate(System.currentTimeMillis())
+                                .setIsInstalled(true)
+                                .setIsPreBlocked(false)
+                                .build()
+                        ).build()
+
+                    repo.create(blockedApp)
+                    Log.i(TAG, "✅ Persisted browser to block list: $packageName")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not persist browser: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "persistBlockedBrowser failed: ${e.message}")
         }
     }
 
