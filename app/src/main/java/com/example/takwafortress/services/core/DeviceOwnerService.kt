@@ -21,6 +21,21 @@ class DeviceOwnerService(private val context: Context) {
             false
         }
     }
+    /**
+     * Explicitly ensures camera is NOT disabled.
+     * Called during activation to prevent camera restriction.
+     */
+    fun ensureCameraEnabled(): Result<Unit> {
+        return try {
+            if (!isDeviceOwner()) {
+                return Result.failure(Exception("Device Owner not active"))
+            }
+            devicePolicyManager.setCameraDisabled(adminComponent, false)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     /**
      * Checks if this app is at least a Device Admin (legacy check).

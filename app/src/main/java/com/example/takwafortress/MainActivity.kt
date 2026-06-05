@@ -30,11 +30,14 @@ class TaqwaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         registerBouncyCastle()
+
         instance = this
+
 
         // Initialize BEFORE calling initializeServices()
         deviceOwnerService = DeviceOwnerService(this)
         appInstallMonitorService = AppInstallMonitorService(this)
+
 
         initializeServices()
         createNotificationChannels()
