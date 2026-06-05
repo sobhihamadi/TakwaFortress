@@ -38,11 +38,28 @@ class TaqwaApplication : Application() {
         deviceOwnerService = DeviceOwnerService(this)
         appInstallMonitorService = AppInstallMonitorService(this)
 
+        fixCameraRestriction()
 
         initializeServices()
         createNotificationChannels()
 
         Log.i(TAG, "✅ Taqwa Fortress initialized successfully")
+    }
+
+    private fun fixCameraRestriction() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val adminComponent = android.content.ComponentName(
+                this,
+                com.example.takwafortress.receivers.DeviceAdminReceiver::class.java
+            )
+            if (dpm.isDeviceOwnerApp(packageName)) {
+                dpm.setCameraDisabled(adminComponent, false)
+                Log.i(TAG, "✅ Camera restriction released")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Camera fix: ${e.message}")
+        }
     }
 
     /**
