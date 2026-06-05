@@ -155,10 +155,10 @@ jobs:
           APK_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.newTag }}/app-release.apk"
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME="${{ steps.version.outputs.newTag }}"
-          
+
           ACCESS_TOKEN=$(gcloud auth print-access-token)
-          
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
+
+          curl -X PATCH \
             "https://firestore.googleapis.com/v1/projects/${{ secrets.FIREBASE_PROJECT_ID }}/documents/app_config/version" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
@@ -170,17 +170,4 @@ jobs:
                 \"force_update\": {\"booleanValue\": false},
                 \"release_notes\": {\"stringValue\": \"${{ github.event.head_commit.message }}\"}
               }
-            }")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n-1)
-          
-          echo "HTTP Status: $HTTP_CODE"
-          echo "Response: $BODY"
-          
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Firestore update FAILED with status $HTTP_CODE"
-            exit 1
-          fi
-          
-          echo "✅ Firestore updated successfully to $VERSION_NAME (code: $VERSION_CODE)"
+            }"
