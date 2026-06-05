@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         // ── UPDATE CHECK TEMPORARILY DISABLED ──────────────────────────
         // To re-enable, uncomment the block below and delete the 3 lines under it.
-        /*
+
         lifecycleScope.launch {
             try {
                 val checker = UpdateChecker(this@MainActivity)
@@ -119,10 +119,8 @@ class MainActivity : AppCompatActivity() {
                 viewModel.resolveRoute()
             }
         }
-        */
-        isCheckInProgress = false
-        viewModel.clearCache()
-        viewModel.resolveRoute()
+
+
         // ───────────────────────────────────────────────────────────────
     }
 

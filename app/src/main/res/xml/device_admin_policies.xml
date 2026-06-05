@@ -16,8 +16,7 @@
         <!-- Watch login attempts -->
         <watch-login />
 
-        <!-- Disable camera -->
-        <disable-camera />
+
 
         <!-- Disable keyguard features -->
         <disable-keyguard-features />

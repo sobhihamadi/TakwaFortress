@@ -305,25 +305,41 @@ class UpdateChecker(private val context: Context) {
     private fun resolveRedirectUrl(url: String): String {
         var currentUrl = url
         var redirectCount = 0
-        val maxRedirects = 5
+        val maxRedirects = 10  // GitHub can have more hops
 
         while (redirectCount < maxRedirects) {
-            val connection = java.net.URL(currentUrl).openConnection() as java.net.HttpURLConnection
+            val connection = try {
+                java.net.URL(currentUrl).openConnection() as java.net.HttpURLConnection
+            } catch (e: Exception) {
+                break
+            }
+
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-            connection.connectTimeout = 8_000
-            connection.readTimeout    = 8_000
-            connection.connect()
+            connection.setRequestProperty("Accept", "application/octet-stream")
+            connection.connectTimeout = 10_000
+            connection.readTimeout    = 10_000
 
-            val responseCode = connection.responseCode
-            Log.d(TAG, "Redirect check [$redirectCount]: $currentUrl → $responseCode")
+            try {
+                connection.connect()
+                val responseCode = connection.responseCode
 
-            if (responseCode in 300..399) {
-                val location = connection.getHeaderField("Location") ?: break
-                connection.disconnect()
-                currentUrl = location
-                redirectCount++
-            } else {
+                if (responseCode in 300..399) {
+                    val location = connection.getHeaderField("Location") ?: break
+                    connection.disconnect()
+                    // Handle relative redirects
+                    currentUrl = if (location.startsWith("http")) {
+                        location
+                    } else {
+                        val base = java.net.URL(currentUrl)
+                        java.net.URL(base, location).toString()
+                    }
+                    redirectCount++
+                } else {
+                    connection.disconnect()
+                    break
+                }
+            } catch (e: Exception) {
                 connection.disconnect()
                 break
             }

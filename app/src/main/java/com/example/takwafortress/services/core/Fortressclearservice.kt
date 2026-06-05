@@ -182,7 +182,13 @@ class FortressClearService(private val context: Context) {
             Log.i(TAG, "✅ Uninstall unblocked")
         } catch (e: Exception) { Log.w(TAG, "Unblock uninstall: ${e.message}") }
 
-
+// Re-enable camera
+        try {
+            devicePolicyManager.setCameraDisabled(adminComponent, false)
+            Log.i(TAG, "✅ Camera re-enabled")
+        } catch (e: Exception) {
+            Log.w(TAG, "Camera re-enable: ${e.message}")
+        }
 
         // ── Step 10b: Stop the monitor service ────────────────────────────
         Log.i(TAG, "Step 10b: Stopping FortressMonitorService...")

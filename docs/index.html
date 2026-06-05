@@ -410,10 +410,10 @@
     try {
       const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
       const data = await res.json();
-      
+
       // Find the .apk asset
       const apk = data.assets?.find(a => a.name.endsWith('.apk'));
-      
+
       if (apk) {
         const url = apk.browser_download_url;
         document.getElementById('btn-hero-download').href = url;
