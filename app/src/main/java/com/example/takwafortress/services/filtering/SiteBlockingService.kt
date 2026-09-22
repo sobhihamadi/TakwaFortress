@@ -31,7 +31,16 @@ class SiteBlockingService(private val context: Context) {
             "onlyfans.com", "redtube.com", "youporn.com",
             "proxysite.com", "hide.me", "whoer.net", "vpnbook.com",
             "ultrasurf.us", "anonymouse.org", "chrome://flags",
-            "chrome://settings/privacy"
+            "chrome://settings/privacy",
+
+            // ── Added from all_apps_and_sites.docx ──────────────────────
+            "instagram.com", "telegram.com", "telegramx.com", "stoat.com",
+            "t.me", "shahedpro.com", "hawak.net", "dailymotion.com",
+            "tokyvideo.com", "w30.shahidwbas.tv", "w20.my-cima.net",
+            "filmktube.com", "ok.ru", "vid.mycima.cc", "iegybest.cimawbas.tv",
+            "a.qfilm.tv", "w20.3oyn.com", "kinogo.online", "fawesome.tv",
+            "uk.chili.com", "lv.kinogo.ec", "csfd.cz", "web.stremio.com",
+            "m.vk.ru", "tel.yandex.ru", "kinogo.media", "yomovies.energy"
         )
     }
 

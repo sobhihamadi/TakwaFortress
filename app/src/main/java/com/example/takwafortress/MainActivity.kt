@@ -62,6 +62,7 @@ class TaqwaApplication : Application() {
         }
     }
 
+
     /**
      * ✅ IMPROVED: Robust BouncyCastle registration
      */
