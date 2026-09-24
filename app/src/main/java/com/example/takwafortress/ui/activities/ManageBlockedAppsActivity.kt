@@ -461,18 +461,36 @@ class ManageBlockedAppsActivity : AppCompatActivity() {
         }
     }
 
+
+    private suspend fun reconcilePreBlocked() {
+        repository.getAll()
+            .filter { !it.getIsInstalled() }
+            .forEach { entry ->
+                val pkg = entry.getPackageName()
+                val installed = try { packageManager.getPackageInfo(pkg, 0); true }
+                catch (e: android.content.pm.PackageManager.NameNotFoundException) { false }
+                if (installed) {
+                    blockAppNow(pkg)
+                    // update entry: isInstalled = true, isPreBlocked = false
+                    // (use your repository's update method)
+                }
+            }
+    }
+
     private fun loadData() {
         lifecycleScope.launch {
+            reconcilePreBlocked()
             loadInstalledApps()
             loadBlockedApps()
         }
     }
-
     private suspend fun loadInstalledApps() {
         installedAppsContainer.removeAllViews()
 
         val allApps = verificationService.getAllInstallableApps()
-        val blockedPackages = repository.getAll().map { it.getPackageName() }.toSet()
+        val blockedPackages = repository.getAll()
+            .filter { it.getIsInstalled() }          // ignore pre-block placeholders
+            .map { it.getPackageName() }.toSet()
 
         val availableApps = allApps.filter { it.packageName !in blockedPackages }
 
