@@ -53,10 +53,7 @@ open class BlockedApp(
 
     companion object {
         val NUCLEAR_BLACKLIST = setOf(
-            "org.telegram.messenger",
-            "com.reddit.frontpage",
-            "com.twitter.android",
-            "com.discord",
+
 
             // ── Added from all_apps_and_sites.docx ──────────────────────
             "org.thunderdog.challegram",
