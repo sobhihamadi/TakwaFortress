@@ -245,6 +245,11 @@ class FortressClearService(private val context: Context) {
             }
             Log.i(TAG, "✅ Fortress policy cleared")
         } catch (e: Exception) { Log.w(TAG, "Clear policy: ${e.message}") }
+        try {
+            com.example.takwafortress.services.filtering.AppAllowlistManager(context).clearAll()
+            Log.i(TAG, "✅ App allowlist + waiting list cleared")
+        } catch (e: Exception) { Log.w(TAG, "Clear allowlist: ${e.message}") }
+
 
         try {
             context.getSharedPreferences("fortress_commitment", Context.MODE_PRIVATE)

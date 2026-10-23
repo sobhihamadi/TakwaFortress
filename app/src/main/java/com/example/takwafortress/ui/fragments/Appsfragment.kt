@@ -20,6 +20,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.example.takwafortress.model.builders.BlockedAppBuilder
 import com.example.takwafortress.model.builders.IdentifierBlockedAppBuilder
+import com.example.takwafortress.services.filtering.AppAllowlistManager
+import com.example.takwafortress.services.filtering.BlockedAppsManager
 import com.example.takwafortress.repository.implementations.LocalBlockedAppRepository
 import com.example.takwafortress.services.verification.AppSearchResult
 import com.example.takwafortress.services.verification.GooglePlayVerificationService
@@ -50,6 +52,8 @@ class AppsFragment : Fragment() {
 
     private lateinit var viewModel: FortressStatusViewModel
     private lateinit var repository: LocalBlockedAppRepository
+    private lateinit var allowlist: AppAllowlistManager
+
     private lateinit var verificationService: GooglePlayVerificationService
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: android.content.ComponentName
@@ -68,6 +72,9 @@ class AppsFragment : Fragment() {
     private lateinit var tabInstalledLabel: TextView
     private lateinit var tabBlockedList: LinearLayout
     private lateinit var tabBlockedLabel: TextView
+    private lateinit var waitingAppsContainer: LinearLayout
+    private lateinit var tabWaiting: LinearLayout
+    private lateinit var tabWaitingLabel: TextView
     private lateinit var contentRoot: LinearLayout
 
     companion object {
@@ -89,6 +96,8 @@ class AppsFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         repository          = LocalBlockedAppRepository(requireContext())
+        allowlist           = AppAllowlistManager(requireContext())
+
         verificationService = GooglePlayVerificationService(requireContext())
         devicePolicyManager = requireContext().getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         adminComponent      = android.content.ComponentName(
@@ -142,6 +151,8 @@ class AppsFragment : Fragment() {
             text = "App Blocking"
             textSize = 20f; setTextColor(TEXT_WHITE); typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER; letterSpacing = 0.03f; setPadding(0, dp(4), 0, dp(6))
+            text = "Manage apps blocked during your commitment — new installs wait 12 hours"
+
         })
         contentRoot.addView(TextView(requireContext()).apply {
             text = "Manage apps blocked during your commitment"
@@ -224,15 +235,22 @@ class AppsFragment : Fragment() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
-        tabInstalledApps = makeTabPill("📱  Installed Apps", active = true)
-        tabBlockedList   = makeTabPill("🚫  Blocked List (0)", active = false)
+        tabInstalledApps = makeTabPill("📱 Installed", active = true)
+        tabBlockedList   = makeTabPill("🚫 Blocked (0)", active = false)
+
+        tabWaiting       = makeTabPill("⏳ Waiting (0)", active = false)
+
 
         tabBarContainer.addView(tabInstalledApps)
         tabBarContainer.addView(tabBlockedList)
+        tabBarContainer.addView(tabWaiting)
+
         contentRoot.addView(tabBarContainer)
 
         tabInstalledLabel = tabInstalledApps.getChildAt(0) as TextView
         tabBlockedLabel   = tabBlockedList.getChildAt(0) as TextView
+        tabWaitingLabel   = tabWaiting.getChildAt(0) as TextView
+
 
         // ── List containers ───────────────────────────────────────────────────
         installedAppsContainer = LinearLayout(requireContext()).apply {
@@ -248,12 +266,23 @@ class AppsFragment : Fragment() {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
+        waitingAppsContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         contentRoot.addView(installedAppsContainer)
         contentRoot.addView(blockedAppsContainer)
+        contentRoot.addView(waitingAppsContainer)
+
 
         // ── Listeners ─────────────────────────────────────────────────────────
         tabInstalledApps.setOnClickListener { if (!isExpired) switchSubTab(0) else showExpiredToast() }
         tabBlockedList.setOnClickListener   { if (!isExpired) switchSubTab(1) else showExpiredToast() }
+        tabWaiting.setOnClickListener       { if (!isExpired) switchSubTab(2) else showExpiredToast() }
+
         searchButton.setOnClickListener     { if (!isExpired) performSearch()  else showExpiredToast() }
         searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -281,17 +310,14 @@ class AppsFragment : Fragment() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun switchSubTab(tab: Int) {
-        if (tab == 0) {
-            setTabActive(tabInstalledApps, tabInstalledLabel)
-            setTabInactive(tabBlockedList, tabBlockedLabel)
-            installedAppsContainer.visibility = View.VISIBLE
-            blockedAppsContainer.visibility   = View.GONE
-        } else {
-            setTabActive(tabBlockedList, tabBlockedLabel)
-            setTabInactive(tabInstalledApps, tabInstalledLabel)
-            installedAppsContainer.visibility = View.GONE
-            blockedAppsContainer.visibility   = View.VISIBLE
+        val pills = listOf(tabInstalledApps to tabInstalledLabel, tabBlockedList to tabBlockedLabel, tabWaiting to tabWaitingLabel)
+        val boxes = listOf(installedAppsContainer, blockedAppsContainer, waitingAppsContainer)
+        pills.forEachIndexed { i, (pill, label) ->
+            if (i == tab) setTabActive(pill, label) else setTabInactive(pill, label)
         }
+        boxes.forEachIndexed { i, box -> box.visibility = if (i == tab) View.VISIBLE else View.GONE }
+
+
     }
 
     private fun setTabActive(pill: LinearLayout, label: TextView) {
@@ -460,14 +486,17 @@ class AppsFragment : Fragment() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun loadBlockedAppsData() {
-        lifecycleScope.launch { loadInstalledApps(); loadBlockedList() }
-    }
+        lifecycleScope.launch {
+            allowlist.releaseDue()      // release approved apps whose 12h are over
+            loadInstalledApps(); loadBlockedList(); loadWaitingList()
+        }    }
 
     private suspend fun loadInstalledApps() {
         installedAppsContainer.removeAllViews()
         val allApps     = verificationService.getAllInstallableApps()
         val blockedPkgs = repository.getAll().map { it.getPackageName() }.toSet()
-        val available   = allApps.filter { it.packageName !in blockedPkgs }
+        val waitingPkgs = allowlist.getWaiting().map { it.packageName }.toSet()
+        val available   = allApps.filter { it.packageName !in blockedPkgs && it.packageName !in waitingPkgs }
 
         if (available.isEmpty()) {
             installedAppsContainer.addView(makeEmptyState("✅  All apps are managed", GREEN_BRIGHT))
@@ -509,6 +538,85 @@ class AppsFragment : Fragment() {
             }
         }
     }
+    private fun loadWaitingList() {
+        waitingAppsContainer.removeAllViews()
+        val waiting = allowlist.getWaiting()
+        tabWaitingLabel.text = "⏳ Waiting (${waiting.size})"
+
+        if (waiting.isEmpty()) {
+            waitingAppsContainer.addView(makeEmptyState("No new apps waiting for approval", TEXT_GREY))
+            return
+        }
+        waitingAppsContainer.addView(makeSectionCountLabel(
+            "${waiting.size} new app${if (waiting.size == 1) "" else "s"} — blocked for 12 hours"))
+        waiting.forEach { w ->
+            val remaining = w.remainingMs()
+            val (pillText, pillColor, pillBg) = when {
+                w.approved && remaining > 0 -> Triple("✔ Approved · works in ${formatRemaining(remaining)}", GREEN_BRIGHT, GREEN_DIM)
+                w.approved                  -> Triple("✔ Approved · releasing…", GREEN_BRIGHT, GREEN_DIM)
+                remaining > 0               -> Triple("⏳ Blocked · ${formatRemaining(remaining)} left", ORANGE, Color.parseColor("#2A1E0E"))
+                else                        -> Triple("⏳ Blocked · waiting for your decision", ORANGE, Color.parseColor("#2A1E0E"))
+            }
+            val actions = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                if (!w.approved) {
+                    addView(makeActionPill("Approve", GREEN_BRIGHT, GREEN_DIM) { approveWaitingApp(w) })
+                }
+                addView(makeActionPill("Reject", RED, RED_DIM) { rejectWaitingApp(w) }.apply {
+                    (layoutParams as? LinearLayout.LayoutParams)?.topMargin = if (!w.approved) dp(6) else 0
+                })
+            }
+            waitingAppsContainer.addView(makeAppRow(
+                name = w.appName, pkg = w.packageName,
+                pillText = pillText, pillColor = pillColor, pillBg = pillBg,
+                actionView = actions
+            ))
+        }
+    }
+
+    private fun approveWaitingApp(w: AppAllowlistManager.WaitingApp) {
+        allowlist.approve(w.packageName)
+        allowlist.releaseDue()   // if the 12h are already over, it is released right now
+        Toast.makeText(requireContext(), "✅  ${w.appName} approved", Toast.LENGTH_SHORT).show()
+        loadBlockedAppsData()
+    }
+
+    private fun rejectWaitingApp(w: AppAllowlistManager.WaitingApp) {
+        lifecycleScope.launch {
+            try {
+                // Add to the blocked list first, so it is never re-registered as "new"
+                repository.create(
+                    IdentifierBlockedAppBuilder.newBuilder()
+                        .setId(UUID.randomUUID().toString())
+                        .setBlockedApp(
+                            BlockedAppBuilder.newBuilder()
+                                .setPackageName(w.packageName)
+                                .setAppName(w.appName)
+                                .setIsSystemApp(false)
+                                .setIsSuspended(true)
+                                .setBlockReason("Rejected new install")
+                                .setDetectedDate(System.currentTimeMillis())
+                                .setIsInstalled(true)
+                                .setIsPreBlocked(false)
+                                .build()
+                        ).build()
+                )
+                BlockedAppsManager(requireContext()).addBlockedPackage(w.packageName)
+                blockAppNow(w.packageName)
+                allowlist.reject(w.packageName)
+                Toast.makeText(requireContext(), "🚫  ${w.appName} blocked", Toast.LENGTH_SHORT).show()
+                loadBlockedAppsData()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rejecting app", e)
+            }
+        }
+    }
+
+    private fun formatRemaining(ms: Long): String {
+        val totalMin = (ms + 59_999) / 60_000
+        return "${totalMin / 60}h ${totalMin % 60}m"
+    }
+
 
     // ══════════════════════════════════════════════════════════════════════════
     // UI FACTORIES
@@ -533,7 +641,7 @@ class AppsFragment : Fragment() {
             shape = GradientDrawable.RECTANGLE; setColor(Color.TRANSPARENT); cornerRadius = dp(8).toFloat()
         }
         addView(TextView(requireContext()).apply {
-            text = label; textSize = 13f; gravity = Gravity.CENTER
+            text = label; textSize = 12f; gravity = Gravity.CENTER; maxLines = 1
             setTextColor(if (active) GREEN_BRIGHT else TEXT_GREY)
             typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         })
@@ -599,6 +707,23 @@ class AppsFragment : Fragment() {
             })
             setOnClickListener { onClick() }
         }
+    private fun makeActionPill(label: String, color: Int, bg: Int, onClick: () -> Unit) =
+        LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            setPadding(dp(12), dp(5), dp(12), dp(5))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(bg); setStroke(dp(1), color.withAlpha(60)); cornerRadius = dp(20).toFloat()
+            }
+            addView(TextView(requireContext()).apply {
+                text = label; textSize = 12f; setTextColor(color); typeface = Typeface.DEFAULT_BOLD
+            })
+            setOnClickListener { onClick() }
+        }
+
 
     private fun makeLockIcon() = TextView(requireContext()).apply {
         text = "🔒"; textSize = 18f

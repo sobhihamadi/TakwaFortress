@@ -13,12 +13,19 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import com.example.takwafortress.receivers.DeviceAdminReceiver
 import com.example.takwafortress.services.core.DeviceOwnerService
+import com.example.takwafortress.services.filtering.AppAllowlistManager
 import com.example.takwafortress.services.filtering.BlockedAppsManager
 import com.example.takwafortress.services.filtering.ContentFilteringService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -90,6 +97,24 @@ class FortressMonitorService : Service() {
 
     private var receiverRegistered = false
 
+    // ── Allowlist: 12h waiting list loop ──────────────────────────────────────
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loopHandler = Handler(Looper.getMainLooper())
+    private val allowlistTick = object : Runnable {
+        override fun run() {
+            ioScope.launch {
+                try {
+                    val allowlist = AppAllowlistManager(applicationContext)
+                    allowlist.releaseDue()
+                    allowlist.scanForNewApps()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Allowlist tick failed: ${e.message}")
+                }
+            }
+            loopHandler.postDelayed(this, 60_000L)
+        }
+    }
+
     // ── Service lifecycle ─────────────────────────────────────────────────────
 
     override fun onCreate() {
@@ -109,6 +134,9 @@ class FortressMonitorService : Service() {
         // Block any browsers that may have been installed while the service
         // was not running (e.g. device rebooted, service was killed).
         blockAllCurrentBrowsers()
+
+        // Start the allowlist loop (first tick runs now → catches apps installed while off)
+        loopHandler.post(allowlistTick)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -120,6 +148,8 @@ class FortressMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterPackageReceiver()
+        loopHandler.removeCallbacks(allowlistTick)
+        ioScope.cancel()
         Log.i(TAG, "FortressMonitorService stopped")
     }
 
@@ -154,6 +184,12 @@ class FortressMonitorService : Service() {
                 persistBlockedBrowser(packageName)
             } else {
                 Log.w(TAG, "⚠️ Failed to hide browser: $packageName")
+            }
+        } else {
+            // Not a browser → allowlist rule: new apps wait 12h (no-op if not allowlisted-mode)
+            ioScope.launch {
+                try { AppAllowlistManager(applicationContext).registerIfNew(packageName) }
+                catch (e: Exception) { Log.w(TAG, "registerIfNew failed: ${e.message}") }
             }
         }
     }
