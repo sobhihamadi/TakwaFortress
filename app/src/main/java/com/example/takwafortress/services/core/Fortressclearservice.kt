@@ -252,6 +252,11 @@ class FortressClearService(private val context: Context) {
 
 
         try {
+            com.example.takwafortress.services.filtering.AppAllowlistManager(context).clearAll()
+            Log.i(TAG, "✅ App allowlist + waiting list cleared")
+        } catch (e: Exception) { Log.w(TAG, "Clear allowlist: ${e.message}") }
+
+        try {
             context.getSharedPreferences("fortress_commitment", Context.MODE_PRIVATE)
                 .edit().clear().apply()
             Log.i(TAG, "✅ Commitment prefs cleared")

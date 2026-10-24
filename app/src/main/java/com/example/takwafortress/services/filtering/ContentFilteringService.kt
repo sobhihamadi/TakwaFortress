@@ -72,6 +72,10 @@ class ContentFilteringService(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "🛡️ Activating full content protection (4 layers)…")
+
+                // Allowlist: first activation only — every app installed right now is allowed.
+                // (Re-pressing Activate must NOT re-snapshot, or waiting/blocked apps would be allowed.)
+                AppAllowlistManager(context).let { if (!it.isEnabled()) it.snapshotInstalled() }
                 val results      = mutableListOf<String>()
                 var allSucceeded = true
 
