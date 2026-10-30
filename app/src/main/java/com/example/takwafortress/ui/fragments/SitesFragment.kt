@@ -15,7 +15,7 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.example.takwafortress.model.entities.BlockedSite
+import com.example.takwafortress.services.filtering.SiteAllowlistManager
 import com.example.takwafortress.services.filtering.SiteBlockingService
 import com.example.takwafortress.services.filtering.SiteBlockResult
 import kotlinx.coroutines.launch
@@ -29,6 +29,8 @@ private val BORDER_TOP = Color.parseColor("#354059")
 private val BLUE       = Color.parseColor("#4A90D9")
 private val GREEN      = Color.parseColor("#5DB88A")
 private val GREEN_DIM  = Color.parseColor("#1A3040")
+private val ORANGE     = Color.parseColor("#E0A458")
+private val ORANGE_DIM = Color.parseColor("#2A1E0E")
 private val RED        = Color.parseColor("#E05C5C")
 private val RED_DIM    = Color.parseColor("#2E1A1A")
 private val TEXT_WHITE = Color.parseColor("#EFF3F8")
@@ -39,6 +41,7 @@ private val DIVIDER    = Color.parseColor("#252E3F")
 class SitesFragment : Fragment() {
 
     private lateinit var siteBlockingService: SiteBlockingService
+    private lateinit var allowlist: SiteAllowlistManager
     private lateinit var blockedListContainer: LinearLayout
     private lateinit var urlInput: EditText
     private lateinit var blockButton: Button
@@ -55,12 +58,16 @@ class SitesFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         siteBlockingService = SiteBlockingService(requireContext())
+        allowlist = SiteAllowlistManager(requireContext())
         return buildUi()
     }
 
     override fun onResume() {
         super.onResume()
-        loadBlockedSites()
+        lifecycleScope.launch {
+            if (allowlist.needsApply()) siteBlockingService.applyToChrome()
+            loadBlockedSites()
+        }
     }
 
     // ── Build UI ───────────────────────────────────────────────────────────────
@@ -80,10 +87,10 @@ class SitesFragment : Fragment() {
 
         // ── Header ─────────────────────────────────────────────────────────────
         content.addView(text("TAKWA FORTRESS", 10f, TEXT_GREY, letterSpacing = 0.25f, gravity = Gravity.CENTER))
-        content.addView(text("Site Blocking", 20f, TEXT_WHITE, bold = true, gravity = Gravity.CENTER).apply {
+        content.addView(text("Allowed Sites", 20f, TEXT_WHITE, bold = true, gravity = Gravity.CENTER).apply {
             setPadding(0, dp(4), 0, dp(6))
         })
-        content.addView(text("Block websites in Chrome during your commitment", 13f, TEXT_GREY, gravity = Gravity.CENTER).apply {
+        content.addView(text("Chrome opens only the sites listed here during your commitment", 13f, TEXT_GREY, gravity = Gravity.CENTER).apply {
             setPadding(0, 0, 0, dp(24))
         })
 
@@ -101,9 +108,10 @@ class SitesFragment : Fragment() {
         }
         banner.addView(text("🌐  How it works", 13f, BLUE, bold = true).apply { setPadding(0, 0, 0, dp(6)) })
         banner.addView(text(
-            "Sites you add here are blocked in Chrome immediately via the URLBlocklist policy. " +
-                    "DNS blocking also applies device-wide. Enter a domain like reddit.com or instagram.com — " +
-                    "no need to include http:// or www.",
+            "Once your fortress is active, Chrome blocks every site except the ones allowed here. " +
+                    "A site you add after activation waits 12 hours and needs your Approve before it works. " +
+                    "Add the sites you need now, before activating. google.com is always allowed. " +
+                    "Enter a domain like github.com — no need to include http:// or www.",
             12f, TEXT_GREY
         ).apply { setLineSpacing(0f, 1.4f) })
         content.addView(banner)
@@ -111,12 +119,12 @@ class SitesFragment : Fragment() {
         // ── Add-site card ──────────────────────────────────────────────────────
         val addCard = card()
 
-        addCard.addView(text("➕  ADD SITE TO BLOCK", 11f, TEXT_GREY, letterSpacing = 0.12f).apply {
+        addCard.addView(text("➕  ADD SITE TO ALLOW", 11f, TEXT_GREY, letterSpacing = 0.12f).apply {
             setPadding(0, 0, 0, dp(14))
         })
 
         urlInput = EditText(requireContext()).apply {
-            hint = "e.g. reddit.com or instagram.com"
+            hint = "e.g. github.com"
             setTextColor(TEXT_WHITE)
             setHintTextColor(TEXT_GREY)
             textSize = 14f
@@ -132,7 +140,7 @@ class SitesFragment : Fragment() {
         addCard.addView(urlInput)
 
         blockButton = Button(requireContext()).apply {
-            text = "Block Site"
+            text = "Allow Site"
             textSize = 14f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
@@ -193,50 +201,56 @@ class SitesFragment : Fragment() {
         statusText.visibility = View.GONE
 
         lifecycleScope.launch {
-            val result = siteBlockingService.blockSite(input)
+            val result = siteBlockingService.allowSite(input)
             progressBar.visibility = View.GONE
             blockButton.isEnabled = true
             when (result) {
                 is SiteBlockResult.Success -> {
                     urlInput.text.clear()
-                    showStatus("✅  ${result.domain} is now blocked in Chrome", GREEN)
+                    if (allowlist.isEnforced())
+                        showStatus("⏳  ${result.domain} is waiting — approve it below, it works after 12 hours", ORANGE)
+                    else
+                        showStatus("✅  ${result.domain} is allowed in Chrome", GREEN)
                     loadBlockedSites()
                 }
                 is SiteBlockResult.InvalidUrl ->
                     showStatus("⚠️  Enter a valid domain (e.g. reddit.com)", RED)
                 is SiteBlockResult.DeviceOwnerRequired ->
-                    showStatus("❌  Device Owner required to block sites", RED)
+                    showStatus("❌  Device Owner required to manage sites", RED)
                 is SiteBlockResult.ApplyFailed ->
                     showStatus("⚠️  Site saved but Chrome policy update failed", RED)
             }
         }
     }
 
-    private fun confirmUnblock(site: BlockedSite) {
+    private fun confirmRemove(site: SiteAllowlistManager.AllowedSite) {
         AlertDialog.Builder(requireContext())
-            .setTitle("Unblock ${site.domain}?")
-            .setMessage("This removes the Chrome URLBlocklist entry for this site. DNS blocking may still apply.")
-            .setPositiveButton("Unblock") { _, _ ->
+            .setTitle(if (site.isActive()) "Remove ${site.domain}?" else "Cancel ${site.domain}?")
+            .setMessage(
+                if (site.isActive()) "Chrome will stop opening this site. Adding it back later waits 12 hours."
+                else "This site will not be allowed."
+            )
+            .setPositiveButton(if (site.isActive()) "Remove" else "Cancel request") { _, _ ->
                 lifecycleScope.launch {
-                    siteBlockingService.unblockSite(site.id)
+                    siteBlockingService.removeAllowedSite(site.domain)
                     loadBlockedSites()
-                    showStatus("${site.domain} unblocked", TEXT_GREY)
+                    showStatus("${site.domain} removed", TEXT_GREY)
                 }
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Back", null)
             .show()
     }
 
     private fun loadBlockedSites() {
         lifecycleScope.launch {
-            val sites = siteBlockingService.getAllBlockedSites()
+            val sites = siteBlockingService.getAllowedSites()
             blockedListContainer.removeAllViews()
 
             if (sites.isEmpty()) {
                 blockedListContainer.addView(
                     // Replace the empty-state text inside loadBlockedSites():
                     text(
-                        "No sites blocked yet\n\nAdd a domain above — blocked sites\ncannot be removed until your commitment ends.",
+                        "No sites allowed yet\n\nAdd the sites you need in Chrome.\nAnything not listed stays blocked.",
                         14f, TEXT_GREY, gravity = Gravity.CENTER
                     ).apply {
                         setPadding(0, dp(32), 0, 0)
@@ -247,7 +261,7 @@ class SitesFragment : Fragment() {
                 return@launch
             }
 
-            val countLabel = text("${sites.size} site${if (sites.size == 1) "" else "s"} blocked", 11f, TEXT_GREY, letterSpacing = 0.1f)
+            val countLabel = text("${sites.size} site${if (sites.size == 1) "" else "s"} allowed or pending", 11f, TEXT_GREY, letterSpacing = 0.1f)
             countLabel.setPadding(0, 0, 0, dp(10))
             blockedListContainer.addView(countLabel)
 
@@ -257,7 +271,7 @@ class SitesFragment : Fragment() {
 
     // ── Row factory ────────────────────────────────────────────────────────────
 
-    private fun siteRow(site: BlockedSite): View {
+    private fun siteRow(site: SiteAllowlistManager.AllowedSite): View {
         val row = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -271,25 +285,63 @@ class SitesFragment : Fragment() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         textBlock.addView(text(site.domain, 15f, TEXT_WHITE, bold = true))
-        textBlock.addView(statusPill("● Blocked in Chrome", RED, RED_DIM).apply {
+        val totalMin = (site.remainingMs() + 59_999) / 60_000
+        val left = "${totalMin / 60}h ${totalMin % 60}m"
+        val pill = when {
+            site.isActive()      -> statusPill("● Allowed in Chrome", GREEN, GREEN_DIM)
+            site.approved        -> statusPill("✔ Approved · works in $left", GREEN, GREEN_DIM)
+            totalMin > 0         -> statusPill("⏳ Blocked · $left left", ORANGE, ORANGE_DIM)
+            else                 -> statusPill("⏳ Blocked · waiting for your decision", ORANGE, ORANGE_DIM)
+        }
+        textBlock.addView(pill.apply {
             (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(4)
         })
-        textBlock.addView(text("🔒 Blocked until commitment ends", 11f, TEXT_GREY).apply {
-            setPadding(0, dp(4), 0, 0)
-        })
 
-        // Lock icon — no interaction, matches the apps tab behaviour
-        val lockIcon = TextView(requireContext()).apply {
-            text = "🔒"
-            textSize = 18f
+        fun actionPill(label: String, color: Int, bg: Int, onClick: () -> Unit) = TextView(requireContext()).apply {
+            text = label
+            textSize = 12f
+            setTextColor(color)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(bg); cornerRadius = dp(20).toFloat()
+            }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(4) }
+            setOnClickListener { onClick() }
+        }
+
+        val actions = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { leftMargin = dp(8) }
+            if (!site.approved) {
+                addView(actionPill("Approve", GREEN, GREEN_DIM) {
+                    lifecycleScope.launch {
+                        siteBlockingService.approveSite(site.domain)
+                        loadBlockedSites()
+                        showStatus("✅  ${site.domain} approved", GREEN)
+                    }
+                })
+                addView(actionPill("Reject", RED, RED_DIM) {
+                    lifecycleScope.launch {
+                        siteBlockingService.removeAllowedSite(site.domain)
+                        loadBlockedSites()
+                        showStatus("🚫  ${site.domain} rejected", TEXT_GREY)
+                    }
+                })
+            } else {
+                addView(actionPill(if (site.isActive()) "Remove" else "Cancel", RED, RED_DIM) { confirmRemove(site) })
+            }
         }
 
         row.addView(textBlock)
-        row.addView(lockIcon)
+        row.addView(actions)
         return row
     }
 

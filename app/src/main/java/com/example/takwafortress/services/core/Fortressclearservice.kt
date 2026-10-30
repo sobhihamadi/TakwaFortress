@@ -227,6 +227,14 @@ class FortressClearService(private val context: Context) {
     }
 
     private suspend fun clearLocalDataOnly() {
+        // Allowlist state first: SiteBlockingService.applyToChrome() below must not
+        // see "enforced" and push a block-everything policy again.
+        try {
+            com.example.takwafortress.services.filtering.AppAllowlistManager(context).clearAll()
+            com.example.takwafortress.services.filtering.SiteAllowlistManager(context).clearAll()
+            Log.i(TAG, "✅ App + site allowlists cleared")
+        } catch (e: Exception) { Log.w(TAG, "Clear allowlists: ${e.message}") }
+
         try {
             val all = localBlockedAppRepo.getAll()
             all.forEach { try { localBlockedAppRepo.delete(it.getId()) } catch (e: Exception) { } }
@@ -250,11 +258,6 @@ class FortressClearService(private val context: Context) {
             Log.i(TAG, "✅ App allowlist + waiting list cleared")
         } catch (e: Exception) { Log.w(TAG, "Clear allowlist: ${e.message}") }
 
-
-        try {
-            com.example.takwafortress.services.filtering.AppAllowlistManager(context).clearAll()
-            Log.i(TAG, "✅ App allowlist + waiting list cleared")
-        } catch (e: Exception) { Log.w(TAG, "Clear allowlist: ${e.message}") }
 
         try {
             context.getSharedPreferences("fortress_commitment", Context.MODE_PRIVATE)

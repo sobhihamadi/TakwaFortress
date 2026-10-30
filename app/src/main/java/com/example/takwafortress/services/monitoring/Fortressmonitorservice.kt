@@ -107,6 +107,10 @@ class FortressMonitorService : Service() {
                     val allowlist = AppAllowlistManager(applicationContext)
                     allowlist.releaseDue()
                     allowlist.scanForNewApps()
+                    // Site allowlist: a pending site whose 12h are over becomes allowed in Chrome
+                    if (com.example.takwafortress.services.filtering.SiteAllowlistManager(applicationContext).needsApply()) {
+                        com.example.takwafortress.services.filtering.SiteBlockingService(applicationContext).applyToChrome()
+                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "Allowlist tick failed: ${e.message}")
                 }

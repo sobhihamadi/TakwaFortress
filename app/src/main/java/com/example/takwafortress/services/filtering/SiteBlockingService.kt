@@ -23,6 +23,11 @@ class SiteBlockingService(private val context: Context) {
         private const val TAG = "SiteBlockingService"
         const val CHROME_PACKAGE = "com.android.chrome"
 
+        /** Always allowed once the allowlist is enforced (search + Chrome's own new-tab page). */
+        private val ALWAYS_ALLOWED = listOf(
+            "google.com", "chrome://newtab", "chrome://new-tab-page", "chrome-search://local-ntp"
+        )
+
         /** Hardcoded sites that are always blocked (matches ContentFilteringService list). */
         private val HARDCODED_BLOCKED = arrayOf(
             "twitter.com", "x.com", "tiktok.com", "reddit.com", "snapchat.com",
@@ -45,6 +50,7 @@ class SiteBlockingService(private val context: Context) {
     }
 
     private val repository = LocalBlockedSiteRepository(context)
+    private val allowlist = SiteAllowlistManager(context)
     private val deviceOwnerService = DeviceOwnerService(context)
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val admin = ComponentName(context, DeviceAdminReceiver::class.java)
@@ -78,6 +84,29 @@ class SiteBlockingService(private val context: Context) {
         }
     }
 
+    /** Adds a site to the Chrome allowlist (12h wait if the fortress is active) and re-applies policy. */
+    suspend fun allowSite(rawInput: String): SiteBlockResult {
+        val domain = normalizeDomain(rawInput)
+        if (domain.isBlank() || !domain.contains(".")) return SiteBlockResult.InvalidUrl
+        if (!deviceOwnerService.isDeviceOwner()) return SiteBlockResult.DeviceOwnerRequired
+        allowlist.add(domain)
+        return if (applyToChrome()) SiteBlockResult.Success(domain) else SiteBlockResult.ApplyFailed
+    }
+
+    /** Approves a waiting site. It works once its 12h are over (immediately if they already are). */
+    suspend fun approveSite(domain: String) {
+        allowlist.approve(domain)
+        applyToChrome()
+    }
+
+    /** Removes an allowed (or pending) site and re-applies Chrome policy. */
+    suspend fun removeAllowedSite(domain: String) {
+        allowlist.remove(domain)
+        applyToChrome()
+    }
+
+    fun getAllowedSites() = allowlist.getAll()
+
     /** Removes a site by id and re-applies Chrome policy. */
     suspend fun unblockSite(id: String) {
         repository.remove(id)
@@ -106,13 +135,24 @@ class SiteBlockingService(private val context: Context) {
                 dpm.getApplicationRestrictions(admin, CHROME_PACKAGE)
             } catch (e: Exception) { Bundle() }
 
-            // Preserve all existing Chrome policies, only overwrite URLBlocklist
+            // Preserve all existing Chrome policies, only overwrite the URL lists
             val updated = Bundle(current).apply {
-                putStringArray("URLBlocklist", merged)
+                if (allowlist.isEnforced()) {
+                    // Allowlist mode: block everything, allow only approved sites.
+                    // Hardcoded blocked sites always win (never allowed, even if requested).
+                    val allowed = (ALWAYS_ALLOWED + allowlist.effectiveDomains())
+                        .filter { it !in HARDCODED_BLOCKED }.distinct().toTypedArray()
+                    putStringArray("URLBlocklist", (listOf("*") + HARDCODED_BLOCKED).toTypedArray())
+                    putStringArray("URLAllowlist", allowed)
+                } else {
+                    putStringArray("URLBlocklist", merged)
+                    remove("URLAllowlist")
+                }
             }
 
             dpm.setApplicationRestrictions(admin, CHROME_PACKAGE, updated)
-            Log.i(TAG, "✅ Chrome URLBlocklist updated: ${merged.size} entries")
+            allowlist.markApplied()
+            Log.i(TAG, "✅ Chrome URL policy updated (allowlist mode: ${allowlist.isEnforced()})")
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to apply Chrome policy: ${e.message}")
