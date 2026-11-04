@@ -1,5 +1,6 @@
 package com.example.takwafortress.receivers
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -34,6 +35,16 @@ class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
+        // Boot-loop breaker: 3 boots in 10 min → restore everything we hid, pause protection
+        if (SystemSafetyGuard.recordBoot(context)) {
+            Log.w(TAG, "⚠️ Boot loop suspected — restoring hidden apps and pausing protection")
+            val pending = goAsync()
+            Thread {
+                try { SystemSafetyGuard.restoreEverything(context) } finally { pending.finish() }
+            }.start()
+            return
+        }
+
         Log.i(TAG, "Boot completed received — scheduling delayed start")
 
         // ✅ RULE: Never do heavy work here
@@ -48,6 +59,10 @@ class BootCompletedReceiver : BroadcastReceiver() {
     private fun handleBootDelayed(context: Context) {
         try {
             if (!isDeviceOwnerActive(context)) return
+            if (SystemSafetyGuard.isPaused(context)) {
+                Log.w(TAG, "Protection paused by boot-loop breaker — skipping start")
+                return
+            }
 
             startProtectionService(context)
 
@@ -60,11 +75,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
                 Log.e(TAG, "FortressMonitorService boot start failed — non-fatal: ${e.message}")
             }
 
-            try {
-                ContentFilteringService(context).blockOtherBrowsersDynamic()
-            } catch (e: Exception) {
-                Log.e(TAG, "Browser re-block failed — non-fatal: ${e.message}")
-            }
+            // (the browser re-block already ran in startProtectionService and runs again in
+            //  FortressMonitorService.onCreate — a third pass here was redundant)
 
         } catch (e: Exception) {
             Log.e(TAG, "Boot handler failed: ${e.message}")

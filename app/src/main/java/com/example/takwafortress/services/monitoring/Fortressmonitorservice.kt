@@ -1,5 +1,6 @@
 package com.example.takwafortress.services.monitoring
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -137,7 +138,11 @@ class FortressMonitorService : Service() {
 
         // Block any browsers that may have been installed while the service
         // was not running (e.g. device rebooted, service was killed).
-        blockAllCurrentBrowsers()
+        if (!SystemSafetyGuard.isPaused(this)) {
+            // Repair: unhide/unsuspend system packages that an older version may have hidden
+            ioScope.launch { SystemSafetyGuard.restoreProtectedPackages(applicationContext) }
+            blockAllCurrentBrowsers()
+        }
 
         // Start the allowlist loop (first tick runs now → catches apps installed while off)
         loopHandler.post(allowlistTick)
@@ -261,9 +266,10 @@ class FortressMonitorService : Service() {
      * never seen before.
      */
     private fun isBrowser(packageName: String): Boolean {
+        if (SystemSafetyGuard.isPaused(this) || SystemSafetyGuard.isProtected(this, packageName)) return false
         return try {
             val webIntent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("https://www.google.com")
+                data = Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
                 addCategory(Intent.CATEGORY_BROWSABLE)
                 setPackage(packageName)
             }

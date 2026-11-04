@@ -1,5 +1,6 @@
 package com.example.takwafortress.services.filtering
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -80,7 +81,9 @@ class AppAllowlistManager(private val context: Context) {
     suspend fun registerIfNew(pkg: String): Boolean = withContext(Dispatchers.IO) {
         if (!isEnabled()) return@withContext false
         if (pkg == context.packageName || pkg == "com.android.chrome" ||
-            pkg.startsWith("com.android.") || pkg.startsWith("com.google.android.gms")
+            pkg.startsWith("com.android.") || pkg.startsWith("com.google.android.gms") ||
+            SystemSafetyGuard.isPaused(context) ||
+            SystemSafetyGuard.isDefaultCriticalApp(context, pkg)
         ) return@withContext false
 
         val pm = context.packageManager

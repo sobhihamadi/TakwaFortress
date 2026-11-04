@@ -1,5 +1,6 @@
 package com.example.takwafortress.receivers
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
@@ -79,9 +80,10 @@ class PackageInstallReceiver : BroadcastReceiver() {
      * Determines browser capabilities by pointing a web intent target directly at the new package
      */
     private fun isTargetPackageABrowser(context: Context, packageName: String): Boolean {
+        if (SystemSafetyGuard.isPaused(context) || SystemSafetyGuard.isProtected(context, packageName)) return false
         return try {
             val webIntent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("https://www.google.com")
+                data = Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
                 addCategory(Intent.CATEGORY_BROWSABLE)
                 setPackage(packageName) // Strictly targets only this specific app
             }

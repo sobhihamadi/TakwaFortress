@@ -1,5 +1,6 @@
 package com.example.takwafortress.services.filtering
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -279,9 +280,13 @@ class ContentFilteringService(private val context: Context) {
         var blockedCount = 0
         var skippedCount = 0
 
+        // Boot-loop breaker active → do not hide anything
+        if (SystemSafetyGuard.isPaused(context)) return BlockResult(0, 0)
+
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("https://www.google.com")
+                // Made-up host: only apps that open ANY web link (real browsers) match
+                data = android.net.Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
                 addCategory(Intent.CATEGORY_BROWSABLE)
             }
 
@@ -301,7 +306,9 @@ class ContentFilteringService(private val context: Context) {
 
             for (packageName in installedBrowsers) {
                 // Keep Chrome and your own app safe
-                if (packageName == CHROME_PACKAGE || packageName == context.packageName) {
+                if (packageName == CHROME_PACKAGE || packageName == context.packageName ||
+                    SystemSafetyGuard.isProtected(context, packageName)
+                ) {
                     skippedCount++
                     continue
                 }
@@ -505,6 +512,7 @@ class ContentFilteringService(private val context: Context) {
         }
     }
     fun hideBrowserPackage(packageName: String): Boolean {
+        if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return false
         return try {
             devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
         } catch (e: Exception) {

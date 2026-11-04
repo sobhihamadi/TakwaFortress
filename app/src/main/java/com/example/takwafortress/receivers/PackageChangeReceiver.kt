@@ -1,5 +1,6 @@
 package com.example.takwafortress.receivers
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -73,9 +74,10 @@ class PackageChangeReceiver : BroadcastReceiver() {
      */
     private fun isNewBrowserPackage(context: Context, packageName: String): Boolean {
         if (packageName == "com.android.chrome" || packageName == context.packageName) return false
+        if (SystemSafetyGuard.isPaused(context) || SystemSafetyGuard.isProtected(context, packageName)) return false
         return try {
             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("https://www.google.com")
+                data = android.net.Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
                 addCategory(android.content.Intent.CATEGORY_BROWSABLE)
                 setPackage(packageName)
             }
@@ -107,6 +109,8 @@ class PackageChangeReceiver : BroadcastReceiver() {
      * Automatically blocks a newly installed app.
      */
     private fun autoBlockApp(context: Context, packageName: String) {
+        // Never suspend system / boot-critical packages (even if an older version listed them)
+        if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return
         CoroutineScope(Dispatchers.IO).launch {
             val appSuspensionService = AppSuspensionService(context)
 

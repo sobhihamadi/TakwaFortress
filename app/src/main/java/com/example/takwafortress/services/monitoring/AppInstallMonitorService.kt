@@ -1,5 +1,6 @@
 package com.example.takwafortress.services.monitoring
 
+import com.example.takwafortress.services.security.SystemSafetyGuard
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -103,6 +104,11 @@ class AppInstallMonitorService(private val context: Context) {
             try {
                 Log.d(TAG, "App installed: $packageName")
 
+                // Never hide/suspend system or boot-critical packages
+                if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) {
+                    return@launch
+                }
+
                 // ✅ FIX: Also check if this is a browser, even if not in repository yet
                 val isBrowserApp = isBrowserPackage(packageName)
                 val isBlocked = repository.isAppBlocked(packageName)
@@ -149,9 +155,10 @@ class AppInstallMonitorService(private val context: Context) {
     }
     // ✅ NEW helper — dynamic browser detection (same logic as FortressMonitorService)
     private fun isBrowserPackage(packageName: String): Boolean {
+        if (SystemSafetyGuard.isPaused(context) || SystemSafetyGuard.isProtected(context, packageName)) return false
         return try {
             val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                data = android.net.Uri.parse("https://www.google.com")
+                data = android.net.Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
                 addCategory(android.content.Intent.CATEGORY_BROWSABLE)
                 setPackage(packageName)
             }
