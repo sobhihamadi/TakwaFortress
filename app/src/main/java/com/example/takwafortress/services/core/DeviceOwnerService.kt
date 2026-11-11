@@ -3,6 +3,8 @@ package com.example.takwafortress.services.core
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import com.example.takwafortress.receivers.DeviceAdminReceiver
 
@@ -10,6 +12,7 @@ class DeviceOwnerService(private val context: Context) {
 
     private val devicePolicyManager = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val adminComponent = ComponentName(context, DeviceAdminReceiver::class.java)
+    private val packageManager: PackageManager = context.packageManager
 
     /**
      * Checks if this app is the Device Owner.
@@ -19,21 +22,6 @@ class DeviceOwnerService(private val context: Context) {
             devicePolicyManager.isDeviceOwnerApp(context.packageName)
         } catch (e: Exception) {
             false
-        }
-    }
-    /**
-     * Explicitly ensures camera is NOT disabled.
-     * Called during activation to prevent camera restriction.
-     */
-    fun ensureCameraEnabled(): Result<Unit> {
-        return try {
-            if (!isDeviceOwner()) {
-                return Result.failure(Exception("Device Owner not active"))
-            }
-            devicePolicyManager.setCameraDisabled(adminComponent, false)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
@@ -47,6 +35,7 @@ class DeviceOwnerService(private val context: Context) {
             false
         }
     }
+
     /**
      * Gets the Device Owner package name (should be this app).
      */
@@ -57,6 +46,7 @@ class DeviceOwnerService(private val context: Context) {
             null
         }
     }
+
     /**
      * Verifies Device Owner status and returns detailed info.
      */
@@ -90,7 +80,8 @@ class DeviceOwnerService(private val context: Context) {
     }
 
     /**
-     * Hides apps from the launcher and app drawer.
+     * Hides apps from the launcher and app drawer safely.
+     * SAFETY UPDATE: Automatically filters out system apps and self-hiding to prevent boot-loops.
      */
     fun hideApps(packageNames: List<String>): Result<Unit> {
         return try {
@@ -99,11 +90,14 @@ class DeviceOwnerService(private val context: Context) {
             }
 
             packageNames.forEach { packageName ->
-                devicePolicyManager.setApplicationHidden(
-                    adminComponent,
-                    packageName,
-                    true
-                )
+                // SAFETY CHECK: Never allow hiding our own app or any system packages
+                if (packageName != context.packageName && !isSystemApp(packageName)) {
+                    devicePolicyManager.setApplicationHidden(
+                        adminComponent,
+                        packageName,
+                        true
+                    )
+                }
             }
 
             Result.success(Unit)
@@ -113,7 +107,8 @@ class DeviceOwnerService(private val context: Context) {
     }
 
     /**
-     * Suspends apps (greyed out but visible).
+     * Suspends apps safely (greyed out but visible).
+     * SAFETY UPDATE: Prevents suspending system or critical packages.
      */
     fun suspendApps(packageNames: List<String>): Result<Unit> {
         return try {
@@ -121,11 +116,14 @@ class DeviceOwnerService(private val context: Context) {
                 return Result.failure(Exception("Device Owner not active"))
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                val packagesArray = packageNames.toTypedArray()
+            val safePackages = packageNames.filter { packageName ->
+                packageName != context.packageName && !isSystemApp(packageName)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && safePackages.isNotEmpty()) {
                 devicePolicyManager.setPackagesSuspended(
                     adminComponent,
-                    packagesArray,
+                    safePackages.toTypedArray(),
                     true
                 )
             }
@@ -135,33 +133,44 @@ class DeviceOwnerService(private val context: Context) {
             Result.failure(e)
         }
     }
+
     /**
-     * Disables USB debugging (DISABLED - USB debugging allowed).
+     * Helper to check if a package is a pre-installed system app (prevents boot loops).
      */
-    fun disableUsbDebugging(): Result<Unit> {
-        // USB debugging ALLOWED - users can use ADB commands
-        return Result.success(Unit)
+    private fun isSystemApp(packageName: String): Boolean {
+        return try {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        } catch (e: Exception) {
+            false // If package not found, default to false
+        }
     }
 
     /**
      * Disables USB debugging (blocks ADB).
      */
-//    fun disableUsbDebugging(): Result<Unit> {
-//        return try {
-//            if (!isDeviceOwner()) {
-//                return Result.failure(Exception("Device Owner not active"))
-//            }
-//
-//            devicePolicyManager.addUserRestriction(
-//                adminComponent,
-//                android.os.UserManager.DISALLOW_DEBUGGING_FEATURES
-//            )
-//
-//            Result.success(Unit)
-//        } catch (e: Exception) {
-//            Result.failure(e)
-//        }
-//    }
+    fun disableUsbDebugging(): Result<Unit> {
+        return try {
+            if (!isDeviceOwner()) {
+                return Result.failure(Exception("Device Owner not active"))
+            }
+
+            devicePolicyManager.addUserRestriction(
+                adminComponent,
+                android.os.UserManager.DISALLOW_DEBUGGING_FEATURES
+            )
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     /**
      * Forces automatic time (prevents time travel to skip commitment period).
@@ -183,31 +192,23 @@ class DeviceOwnerService(private val context: Context) {
     /**
      * Disables factory reset from settings (only hardware buttons work).
      */
-//    fun disableFactoryReset(): Result<Unit> {
-//        return try {
-//            if (!isDeviceOwner()) {
-//                return Result.failure(Exception("Device Owner not active"))
-//            }
-//
-//            devicePolicyManager.addUserRestriction(
-//                adminComponent,
-//                android.os.UserManager.DISALLOW_FACTORY_RESET
-//            )
-//
-//            Result.success(Unit)
-//        } catch (e: Exception) {
-//            Result.failure(e)
-//        }
-//    }
-
-
-    /**
-     * Disables factory reset from settings (DISABLED - User can factory reset freely).
-     */
     fun disableFactoryReset(): Result<Unit> {
-        // Factory reset protection REMOVED - users can factory reset anytime
-        return Result.success(Unit)
+        return try {
+            if (!isDeviceOwner()) {
+                return Result.failure(Exception("Device Owner not active"))
+            }
+
+            devicePolicyManager.addUserRestriction(
+                adminComponent,
+                android.os.UserManager.DISALLOW_FACTORY_RESET
+            )
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
+
     /**
      * Checks if a specific app is hidden.
      */
