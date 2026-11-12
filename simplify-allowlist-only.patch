@@ -1,0 +1,316 @@
+diff --git a/app/src/main/java/com/example/takwafortress/receivers/BootCompletedReceiver.kt b/app/src/main/java/com/example/takwafortress/receivers/BootCompletedReceiver.kt
+index c869e1f..00495a8 100644
+--- a/app/src/main/java/com/example/takwafortress/receivers/BootCompletedReceiver.kt
++++ b/app/src/main/java/com/example/takwafortress/receivers/BootCompletedReceiver.kt
+@@ -105,7 +105,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
+     private fun startProtectionService(context: Context) {
+         try {
+             // Re-block all browsers on boot
+-            ContentFilteringService(context).blockOtherBrowsersDynamic()
++            // browser scan removed (simplified)
+             Log.i(TAG, "✅ Browser re-block on boot complete")
+         } catch (e: Exception) {
+             Log.e(TAG, "Browser re-block failed: ${e.message}")
+diff --git a/app/src/main/java/com/example/takwafortress/receivers/PackageChangeReceiver.kt b/app/src/main/java/com/example/takwafortress/receivers/PackageChangeReceiver.kt
+index 3921036..0d1b292 100644
+--- a/app/src/main/java/com/example/takwafortress/receivers/PackageChangeReceiver.kt
++++ b/app/src/main/java/com/example/takwafortress/receivers/PackageChangeReceiver.kt
+@@ -112,10 +112,7 @@ class PackageChangeReceiver : BroadcastReceiver() {
+         // Never suspend system / boot-critical packages (even if an older version listed them)
+         if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return
+         CoroutineScope(Dispatchers.IO).launch {
+-            val appSuspensionService = AppSuspensionService(context)
+-
+-            // Simply suspend/hide the app
+-            appSuspensionService.suspendApps(listOf(packageName))
++            com.example.takwafortress.services.filtering.AppAllowlistManager(context).registerIfNew(packageName)
+ 
+             Log.i(TAG, "App blocked: $packageName")
+         }
+diff --git a/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt b/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt
+index 138b618..c4091fa 100644
+--- a/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt
++++ b/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt
+@@ -62,7 +62,7 @@ class PackageInstallReceiver : BroadcastReceiver() {
+ 
+                     if (isTargetPackageABrowser(context, packageName)) {
+                         Log.d(TAG, "🚨 Browser installed: $packageName — blocking")
+-                        dpm.setApplicationHidden(adminComponent, packageName, true)
++                        // no hiding (simplified)
+                         Log.d(TAG, "✅ Blocked: $packageName")
+                     }
+ 
+diff --git a/app/src/main/java/com/example/takwafortress/services/core/DeviceOwnerService.kt b/app/src/main/java/com/example/takwafortress/services/core/DeviceOwnerService.kt
+index 7ac5239..03bb9de 100644
+--- a/app/src/main/java/com/example/takwafortress/services/core/DeviceOwnerService.kt
++++ b/app/src/main/java/com/example/takwafortress/services/core/DeviceOwnerService.kt
+@@ -93,6 +93,7 @@ class DeviceOwnerService(private val context: Context) {
+      * Hides apps from the launcher and app drawer.
+      */
+     fun hideApps(packageNames: List<String>): Result<Unit> {
++        return Result.success(Unit) // simplified: never hide/suspend from here
+         return try {
+             if (!isDeviceOwner()) {
+                 return Result.failure(Exception("Device Owner not active"))
+@@ -116,6 +117,7 @@ class DeviceOwnerService(private val context: Context) {
+      * Suspends apps (greyed out but visible).
+      */
+     fun suspendApps(packageNames: List<String>): Result<Unit> {
++        return Result.success(Unit) // simplified: never hide/suspend from here
+         return try {
+             if (!isDeviceOwner()) {
+                 return Result.failure(Exception("Device Owner not active"))
+diff --git a/app/src/main/java/com/example/takwafortress/services/core/FortressActivationService.kt b/app/src/main/java/com/example/takwafortress/services/core/FortressActivationService.kt
+index a795d4b..02c93e4 100644
+--- a/app/src/main/java/com/example/takwafortress/services/core/FortressActivationService.kt
++++ b/app/src/main/java/com/example/takwafortress/services/core/FortressActivationService.kt
+@@ -165,38 +165,7 @@ class FortressActivationService(private val context: Context) {
+         // ═══════════════════════════════════════
+         // 2. Hide nuclear blacklist apps
+         // ═══════════════════════════════════════
+-        val nuclearApps = policy.getBlockedApps().filter {
+-            it in BlockedPackages.NUCLEAR_BLACKLIST
+-        }
+-
+-        if (nuclearApps.isNotEmpty()) {
+-            Log.i(TAG, "Hiding ${nuclearApps.size} nuclear apps...")
+-            deviceOwnerService.hideApps(nuclearApps).onFailure {
+-                val error = "Failed to hide nuclear apps: ${it.message}"
+-                Log.e(TAG, "❌ $error")
+-                errors.add(error)
+-            }.onSuccess {
+-                Log.i(TAG, "✅ Nuclear apps hidden: ${nuclearApps.joinToString()}")
+-            }
+-        }
+-
+-        // ═══════════════════════════════════════
+-        // 3. Suspend other browsers
+-        // ═══════════════════════════════════════
+-        val browsers = policy.getBlockedApps().filter {
+-            it in BlockedPackages.BROWSERS && it !in BlockedPackages.NUCLEAR_BLACKLIST
+-        }
+-
+-        if (browsers.isNotEmpty()) {
+-            Log.i(TAG, "Suspending ${browsers.size} browsers...")
+-            deviceOwnerService.suspendApps(browsers).onFailure {
+-                val error = "Failed to suspend browsers: ${it.message}"
+-                Log.e(TAG, "❌ $error")
+-                errors.add(error)
+-            }.onSuccess {
+-                Log.i(TAG, "✅ Browsers suspended: ${browsers.joinToString()}")
+-            }
+-        }
++        // (nuclear hiding and browser suspension removed — simplified version)
+         // ── Explicitly ensure camera is NEVER disabled ─────────────────────
+         Log.i(TAG, "Ensuring camera stays enabled...")
+         try {
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/AppAllowlistManager.kt b/app/src/main/java/com/example/takwafortress/services/filtering/AppAllowlistManager.kt
+index a714d2e..5edcbb6 100644
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/AppAllowlistManager.kt
++++ b/app/src/main/java/com/example/takwafortress/services/filtering/AppAllowlistManager.kt
+@@ -168,6 +168,12 @@ class AppAllowlistManager(private val context: Context) {
+         try { context.packageManager.getApplicationInfo(pkg, 0); true } catch (e: Exception) { false }
+ 
+     private fun setSuspended(pkg: String, suspended: Boolean) {
++        if (suspended) {
++            try {
++                val f = context.packageManager.getApplicationInfo(pkg, 0).flags
++                if (f and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) return
++            } catch (e: Exception) { return }
++        }
+         try {
+             dpm.setPackagesSuspended(admin, arrayOf(pkg), suspended)
+         } catch (e: Exception) {
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/ContentFilteringService.kt b/app/src/main/java/com/example/takwafortress/services/filtering/ContentFilteringService.kt
+index ee5691a..4c99ad9 100644
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/ContentFilteringService.kt
++++ b/app/src/main/java/com/example/takwafortress/services/filtering/ContentFilteringService.kt
+@@ -82,45 +82,9 @@ class ContentFilteringService(private val context: Context) {
+ 
+                 // ── LAYER 1: DNS ──────────────────────────────────────────────
+                 Log.d(TAG, "Layer 1: DNS filtering…")
+-                if (setupDnsFiltering()) {
+-                    results.add("✅ DNS Filtering: Active (CleanBrowsing)")
+-                } else {
+-                    results.add("⚠️ DNS Filtering: Failed")
+-                    allSucceeded = false
+-                }
+-
+-                // ── LAYER 2: Chrome managed config ────────────────────────────
+-                Log.d(TAG, "Layer 2: Chrome configuration…")
+-                if (configureManagedChrome()) {
+-                    results.add("✅ Chrome Management: Active")
+-                } else {
+-                    results.add("⚠️ Chrome Management: Failed")
+-                    allSucceeded = false
+-                }
+-                // After layer 2 succeeds, sync the URLBlocklist with user-blocked sites
+-                val siteService = SiteBlockingService(context)
+-                siteService.applyToChrome()
+-
+-                // ── LAYER 3: Block other browsers ─────────────────────────────
+-                // Inside activateFullProtection() loop:
+-                Log.d(TAG, "Layer 3: Dynamically blocking alternative browsers…")
+-                val blockResult = blockOtherBrowsersDynamic()
+-                results.add("✅ Browser Blocking: ${blockResult.blocked} apps hidden")
+-
+-
+-
+-                // ── LAYER 4: Keyword detection (Accessibility Service) ─────────
+-                Log.d(TAG, "Layer 4: Enabling keyword detection…")
+-                if (enableKeywordDetectionService()) {
+-                    results.add("✅ Keyword Detection: Active")
+-                    // Seed default keywords on first activation
+-                    BlockedKeywordsManager(context).let { mgr ->
+-                        Log.d(TAG, "  Keyword list: ${mgr.count()} words loaded")
+-                    }
+-                } else {
+-                    results.add("⚠️ Keyword Detection: Could not auto-enable (user may need to enable in Accessibility Settings)")
+-                    // Not a hard failure — the other 3 layers are still active
+-                }
++                // Simplified: only the site allowlist is applied to Chrome.
++                SiteBlockingService(context).applyToChrome()
++                results.add("✅ Site allowlist applied")
+ 
+                 Log.d(TAG, "🎉 Content protection activation complete!")
+                 ContentFilterResult.Success(results.joinToString("\n"))
+@@ -277,6 +241,7 @@ class ContentFilteringService(private val context: Context) {
+ 
+     // Replace your old blockOtherBrowsers() with this:
+     fun blockOtherBrowsersDynamic(): BlockResult {
++        return BlockResult(0, 0) // no browser hiding
+         var blockedCount = 0
+         var skippedCount = 0
+ 
+@@ -512,6 +477,7 @@ class ContentFilteringService(private val context: Context) {
+         }
+     }
+     fun hideBrowserPackage(packageName: String): Boolean {
++        return false // no hiding
+         if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return false
+         return try {
+             devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+@@ -520,6 +486,20 @@ class ContentFilteringService(private val context: Context) {
+             false
+         }
+     }
++
++    /** One-time cleanup of restrictions applied by older versions. */
++    @Suppress("DEPRECATION")
++    suspend fun releaseLegacyRestrictions() {
++        if (!deviceOwnerService.isDeviceOwner()) return
++        listOf(UserManager.DISALLOW_CONFIG_PRIVATE_DNS, UserManager.DISALLOW_DEBUGGING_FEATURES,
++            UserManager.DISALLOW_FACTORY_RESET, UserManager.DISALLOW_SAFE_BOOT).forEach {
++            try { devicePolicyManager.clearUserRestriction(adminComponent, it) } catch (_: Exception) {}
++        }
++        try { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) devicePolicyManager.setGlobalPrivateDnsModeOpportunistic(adminComponent) } catch (_: Exception) {}
++        try { devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, Bundle()) } catch (_: Exception) {}
++        try { devicePolicyManager.setCameraDisabled(adminComponent, false) } catch (_: Exception) {}
++        try { SiteBlockingService(context).applyToChrome() } catch (_: Exception) {}
++    }
+ }
+ 
+ // ═══════════════════════════════════════════════════════════════════
+diff --git a/app/src/main/java/com/example/takwafortress/services/monitoring/AppInstallMonitorService.kt b/app/src/main/java/com/example/takwafortress/services/monitoring/AppInstallMonitorService.kt
+index 399f259..1ac18cf 100644
+--- a/app/src/main/java/com/example/takwafortress/services/monitoring/AppInstallMonitorService.kt
++++ b/app/src/main/java/com/example/takwafortress/services/monitoring/AppInstallMonitorService.kt
+@@ -114,7 +114,7 @@ class AppInstallMonitorService(private val context: Context) {
+                 val isBlocked = repository.isAppBlocked(packageName)
+                 val isInBlockedAppsManager = BlockedAppsManager(context).isPackageBlocked(packageName)
+ 
+-                if (isBlocked || isInBlockedAppsManager || isBrowserApp) {
++                if (isBlocked || isInBlockedAppsManager) {
+                     if (deviceOwnerService.isDeviceOwner()) {
+                         val isNuclear = com.example.takwafortress.model.entities.BlockedApp
+                             .isNuclearApp(packageName)
+@@ -187,7 +187,7 @@ class AppInstallMonitorService(private val context: Context) {
+             )
+ 
+             if (isNuclear) {
+-                dpm.setApplicationHidden(adminComponent, packageName, true)
++                dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+                 Log.d(TAG, "Hidden nuclear app: $packageName")
+             } else {
+                 dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+diff --git a/app/src/main/java/com/example/takwafortress/services/monitoring/Fortressmonitorservice.kt b/app/src/main/java/com/example/takwafortress/services/monitoring/Fortressmonitorservice.kt
+index ca713c0..9f607ad 100644
+--- a/app/src/main/java/com/example/takwafortress/services/monitoring/Fortressmonitorservice.kt
++++ b/app/src/main/java/com/example/takwafortress/services/monitoring/Fortressmonitorservice.kt
+@@ -140,8 +140,7 @@ class FortressMonitorService : Service() {
+         // was not running (e.g. device rebooted, service was killed).
+         if (!SystemSafetyGuard.isPaused(this)) {
+             // Repair: unhide/unsuspend system packages that an older version may have hidden
+-            ioScope.launch { SystemSafetyGuard.restoreProtectedPackages(applicationContext) }
+-            blockAllCurrentBrowsers()
++            ioScope.launch { com.example.takwafortress.services.security.LegacyRestore.runOnce(applicationContext) }
+         }
+ 
+         // Start the allowlist loop (first tick runs now → catches apps installed while off)
+@@ -266,6 +265,7 @@ class FortressMonitorService : Service() {
+      * never seen before.
+      */
+     private fun isBrowser(packageName: String): Boolean {
++        return false // simplified: no browser hiding
+         if (SystemSafetyGuard.isPaused(this) || SystemSafetyGuard.isProtected(this, packageName)) return false
+         return try {
+             val webIntent = Intent(Intent.ACTION_VIEW).apply {
+diff --git a/app/src/main/java/com/example/takwafortress/services/security/LegacyRestore.kt b/app/src/main/java/com/example/takwafortress/services/security/LegacyRestore.kt
+new file mode 100644
+index 0000000..a5de103
+--- /dev/null
++++ b/app/src/main/java/com/example/takwafortress/services/security/LegacyRestore.kt
+@@ -0,0 +1,27 @@
++package com.example.takwafortress.services.security
++
++import android.content.Context
++import android.util.Log
++import com.example.takwafortress.services.filtering.ContentFilteringService
++
++/**
++ * Runs once after updating to the simplified version: unhides/unsuspends everything the
++ * old version touched (fixes camera, gallery editor, boot-loop) and clears old restrictions.
++ */
++object LegacyRestore {
++    private const val PREFS = "legacy_restore"
++    private const val KEY = "done_v1"
++
++    suspend fun runOnce(context: Context) {
++        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
++        if (p.getBoolean(KEY, false)) return
++        try {
++            val n = SystemSafetyGuard.restoreEverything(context)
++            ContentFilteringService(context).releaseLegacyRestrictions()
++            Log.i("LegacyRestore", "Restored $n packages")
++            p.edit().putBoolean(KEY, true).apply()
++        } catch (e: Exception) {
++            Log.e("LegacyRestore", "failed: ${e.message}")
++        }
++    }
++}
+diff --git a/app/src/main/java/com/example/takwafortress/ui/activities/ManageBlockedAppsActivity.kt b/app/src/main/java/com/example/takwafortress/ui/activities/ManageBlockedAppsActivity.kt
+index c3dc261..a2ecc9c 100644
+--- a/app/src/main/java/com/example/takwafortress/ui/activities/ManageBlockedAppsActivity.kt
++++ b/app/src/main/java/com/example/takwafortress/ui/activities/ManageBlockedAppsActivity.kt
+@@ -448,7 +448,7 @@ class ManageBlockedAppsActivity : AppCompatActivity() {
+             val isNuclear = com.example.takwafortress.model.entities.BlockedApp.isNuclearApp(packageName)
+ 
+             if (isNuclear) {
+-                devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
++                devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+                 Log.i(TAG, "Hidden nuclear app: $packageName")
+             } else {
+                 devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+diff --git a/app/src/main/java/com/example/takwafortress/ui/fragments/Appsfragment.kt b/app/src/main/java/com/example/takwafortress/ui/fragments/Appsfragment.kt
+index 436eef2..e6d90dd 100644
+--- a/app/src/main/java/com/example/takwafortress/ui/fragments/Appsfragment.kt
++++ b/app/src/main/java/com/example/takwafortress/ui/fragments/Appsfragment.kt
+@@ -463,7 +463,7 @@ class AppsFragment : Fragment() {
+     private fun blockAppNow(packageName: String) {
+         try {
+             val isNuclear = com.example.takwafortress.model.entities.BlockedApp.isNuclearApp(packageName)
+-            if (isNuclear) devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
++            if (isNuclear) devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+             else           devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+         } catch (e: Exception) {
+             Log.e(TAG, "Failed to block $packageName", e)

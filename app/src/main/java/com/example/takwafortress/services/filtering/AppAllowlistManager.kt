@@ -168,6 +168,12 @@ class AppAllowlistManager(private val context: Context) {
         try { context.packageManager.getApplicationInfo(pkg, 0); true } catch (e: Exception) { false }
 
     private fun setSuspended(pkg: String, suspended: Boolean) {
+        if (suspended) {
+            try {
+                val f = context.packageManager.getApplicationInfo(pkg, 0).flags
+                if (f and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) return
+            } catch (e: Exception) { return }
+        }
         try {
             dpm.setPackagesSuspended(admin, arrayOf(pkg), suspended)
         } catch (e: Exception) {

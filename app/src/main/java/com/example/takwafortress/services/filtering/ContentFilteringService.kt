@@ -82,45 +82,9 @@ class ContentFilteringService(private val context: Context) {
 
                 // ── LAYER 1: DNS ──────────────────────────────────────────────
                 Log.d(TAG, "Layer 1: DNS filtering…")
-                if (setupDnsFiltering()) {
-                    results.add("✅ DNS Filtering: Active (CleanBrowsing)")
-                } else {
-                    results.add("⚠️ DNS Filtering: Failed")
-                    allSucceeded = false
-                }
-
-                // ── LAYER 2: Chrome managed config ────────────────────────────
-                Log.d(TAG, "Layer 2: Chrome configuration…")
-                if (configureManagedChrome()) {
-                    results.add("✅ Chrome Management: Active")
-                } else {
-                    results.add("⚠️ Chrome Management: Failed")
-                    allSucceeded = false
-                }
-                // After layer 2 succeeds, sync the URLBlocklist with user-blocked sites
-                val siteService = SiteBlockingService(context)
-                siteService.applyToChrome()
-
-                // ── LAYER 3: Block other browsers ─────────────────────────────
-                // Inside activateFullProtection() loop:
-                Log.d(TAG, "Layer 3: Dynamically blocking alternative browsers…")
-                val blockResult = blockOtherBrowsersDynamic()
-                results.add("✅ Browser Blocking: ${blockResult.blocked} apps hidden")
-
-
-
-                // ── LAYER 4: Keyword detection (Accessibility Service) ─────────
-                Log.d(TAG, "Layer 4: Enabling keyword detection…")
-                if (enableKeywordDetectionService()) {
-                    results.add("✅ Keyword Detection: Active")
-                    // Seed default keywords on first activation
-                    BlockedKeywordsManager(context).let { mgr ->
-                        Log.d(TAG, "  Keyword list: ${mgr.count()} words loaded")
-                    }
-                } else {
-                    results.add("⚠️ Keyword Detection: Could not auto-enable (user may need to enable in Accessibility Settings)")
-                    // Not a hard failure — the other 3 layers are still active
-                }
+                // Simplified: only the site allowlist is applied to Chrome.
+                SiteBlockingService(context).applyToChrome()
+                results.add("✅ Site allowlist applied")
 
                 Log.d(TAG, "🎉 Content protection activation complete!")
                 ContentFilterResult.Success(results.joinToString("\n"))
@@ -277,6 +241,7 @@ class ContentFilteringService(private val context: Context) {
 
     // Replace your old blockOtherBrowsers() with this:
     fun blockOtherBrowsersDynamic(): BlockResult {
+        return BlockResult(0, 0) // no browser hiding
         var blockedCount = 0
         var skippedCount = 0
 
@@ -512,6 +477,7 @@ class ContentFilteringService(private val context: Context) {
         }
     }
     fun hideBrowserPackage(packageName: String): Boolean {
+        return false // no hiding
         if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return false
         return try {
             devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
@@ -519,6 +485,20 @@ class ContentFilteringService(private val context: Context) {
             Log.e(TAG, "❌ Failed to hide targeted package: $packageName", e)
             false
         }
+    }
+
+    /** One-time cleanup of restrictions applied by older versions. */
+    @Suppress("DEPRECATION")
+    suspend fun releaseLegacyRestrictions() {
+        if (!deviceOwnerService.isDeviceOwner()) return
+        listOf(UserManager.DISALLOW_CONFIG_PRIVATE_DNS, UserManager.DISALLOW_DEBUGGING_FEATURES,
+            UserManager.DISALLOW_FACTORY_RESET, UserManager.DISALLOW_SAFE_BOOT).forEach {
+            try { devicePolicyManager.clearUserRestriction(adminComponent, it) } catch (_: Exception) {}
+        }
+        try { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) devicePolicyManager.setGlobalPrivateDnsModeOpportunistic(adminComponent) } catch (_: Exception) {}
+        try { devicePolicyManager.setApplicationRestrictions(adminComponent, CHROME_PACKAGE, Bundle()) } catch (_: Exception) {}
+        try { devicePolicyManager.setCameraDisabled(adminComponent, false) } catch (_: Exception) {}
+        try { SiteBlockingService(context).applyToChrome() } catch (_: Exception) {}
     }
 }
 

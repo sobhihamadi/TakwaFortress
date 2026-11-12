@@ -165,38 +165,7 @@ class FortressActivationService(private val context: Context) {
         // ═══════════════════════════════════════
         // 2. Hide nuclear blacklist apps
         // ═══════════════════════════════════════
-        val nuclearApps = policy.getBlockedApps().filter {
-            it in BlockedPackages.NUCLEAR_BLACKLIST
-        }
-
-        if (nuclearApps.isNotEmpty()) {
-            Log.i(TAG, "Hiding ${nuclearApps.size} nuclear apps...")
-            deviceOwnerService.hideApps(nuclearApps).onFailure {
-                val error = "Failed to hide nuclear apps: ${it.message}"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
-            }.onSuccess {
-                Log.i(TAG, "✅ Nuclear apps hidden: ${nuclearApps.joinToString()}")
-            }
-        }
-
-        // ═══════════════════════════════════════
-        // 3. Suspend other browsers
-        // ═══════════════════════════════════════
-        val browsers = policy.getBlockedApps().filter {
-            it in BlockedPackages.BROWSERS && it !in BlockedPackages.NUCLEAR_BLACKLIST
-        }
-
-        if (browsers.isNotEmpty()) {
-            Log.i(TAG, "Suspending ${browsers.size} browsers...")
-            deviceOwnerService.suspendApps(browsers).onFailure {
-                val error = "Failed to suspend browsers: ${it.message}"
-                Log.e(TAG, "❌ $error")
-                errors.add(error)
-            }.onSuccess {
-                Log.i(TAG, "✅ Browsers suspended: ${browsers.joinToString()}")
-            }
-        }
+        // (nuclear hiding and browser suspension removed — simplified version)
         // ── Explicitly ensure camera is NEVER disabled ─────────────────────
         Log.i(TAG, "Ensuring camera stays enabled...")
         try {

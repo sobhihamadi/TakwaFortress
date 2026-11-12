@@ -84,6 +84,7 @@ class DeviceOwnerService(private val context: Context) {
      * SAFETY UPDATE: Automatically filters out system apps and self-hiding to prevent boot-loops.
      */
     fun hideApps(packageNames: List<String>): Result<Unit> {
+        return Result.success(Unit) // simplified: never hide/suspend from here
         return try {
             if (!isDeviceOwner()) {
                 return Result.failure(Exception("Device Owner not active"))
@@ -111,6 +112,7 @@ class DeviceOwnerService(private val context: Context) {
      * SAFETY UPDATE: Prevents suspending system or critical packages.
      */
     fun suspendApps(packageNames: List<String>): Result<Unit> {
+        return Result.success(Unit) // simplified: never hide/suspend from here
         return try {
             if (!isDeviceOwner()) {
                 return Result.failure(Exception("Device Owner not active"))

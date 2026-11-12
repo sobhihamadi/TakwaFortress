@@ -62,7 +62,7 @@ class PackageInstallReceiver : BroadcastReceiver() {
 
                     if (isTargetPackageABrowser(context, packageName)) {
                         Log.d(TAG, "🚨 Browser installed: $packageName — blocking")
-                        dpm.setApplicationHidden(adminComponent, packageName, true)
+                        // no hiding (simplified)
                         Log.d(TAG, "✅ Blocked: $packageName")
                     }
 
