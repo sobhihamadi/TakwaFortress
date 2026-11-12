@@ -166,14 +166,6 @@ class FortressActivationService(private val context: Context) {
         // 2. Hide nuclear blacklist apps
         // ═══════════════════════════════════════
         // (nuclear hiding and browser suspension removed — simplified version)
-        // ── Explicitly ensure camera is NEVER disabled ─────────────────────
-        Log.i(TAG, "Ensuring camera stays enabled...")
-        try {
-            deviceOwnerService.ensureCameraEnabled()
-            Log.i(TAG, "✅ Camera confirmed enabled")
-        } catch (e: Exception) {
-            Log.w(TAG, "Camera enable check: ${e.message}")
-        }
 
         // ═══════════════════════════════════════
         // 4. Force automatic time

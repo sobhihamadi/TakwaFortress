@@ -192,23 +192,6 @@ class DeviceOwnerService(private val context: Context) {
     }
 
     /**
-     * Makes sure the camera is never disabled by this app's device policy.
-     */
-    fun ensureCameraEnabled(): Result<Unit> {
-        return try {
-            if (!isDeviceOwner() && !isDeviceAdmin()) {
-                return Result.failure(Exception("Device admin not active"))
-            }
-
-            devicePolicyManager.setCameraDisabled(adminComponent, false)
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    /**
      * Disables factory reset from settings (only hardware buttons work).
      */
     fun disableFactoryReset(): Result<Unit> {
