@@ -140,8 +140,7 @@ class FortressMonitorService : Service() {
         // was not running (e.g. device rebooted, service was killed).
         if (!SystemSafetyGuard.isPaused(this)) {
             // Repair: unhide/unsuspend system packages that an older version may have hidden
-            ioScope.launch { SystemSafetyGuard.restoreProtectedPackages(applicationContext) }
-            blockAllCurrentBrowsers()
+            ioScope.launch { com.example.takwafortress.services.security.LegacyRestore.runOnce(applicationContext) }
         }
 
         // Start the allowlist loop (first tick runs now → catches apps installed while off)
@@ -266,6 +265,7 @@ class FortressMonitorService : Service() {
      * never seen before.
      */
     private fun isBrowser(packageName: String): Boolean {
+        return false // simplified: no browser hiding
         if (SystemSafetyGuard.isPaused(this) || SystemSafetyGuard.isProtected(this, packageName)) return false
         return try {
             val webIntent = Intent(Intent.ACTION_VIEW).apply {

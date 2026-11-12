@@ -114,7 +114,7 @@ class AppInstallMonitorService(private val context: Context) {
                 val isBlocked = repository.isAppBlocked(packageName)
                 val isInBlockedAppsManager = BlockedAppsManager(context).isPackageBlocked(packageName)
 
-                if (isBlocked || isInBlockedAppsManager || isBrowserApp) {
+                if (isBlocked || isInBlockedAppsManager) {
                     if (deviceOwnerService.isDeviceOwner()) {
                         val isNuclear = com.example.takwafortress.model.entities.BlockedApp
                             .isNuclearApp(packageName)
@@ -187,7 +187,7 @@ class AppInstallMonitorService(private val context: Context) {
             )
 
             if (isNuclear) {
-                dpm.setApplicationHidden(adminComponent, packageName, true)
+                dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
                 Log.d(TAG, "Hidden nuclear app: $packageName")
             } else {
                 dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), true)

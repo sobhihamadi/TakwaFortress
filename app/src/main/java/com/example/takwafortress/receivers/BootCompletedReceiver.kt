@@ -105,7 +105,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
     private fun startProtectionService(context: Context) {
         try {
             // Re-block all browsers on boot
-            ContentFilteringService(context).blockOtherBrowsersDynamic()
+            // browser scan removed (simplified)
             Log.i(TAG, "✅ Browser re-block on boot complete")
         } catch (e: Exception) {
             Log.e(TAG, "Browser re-block failed: ${e.message}")

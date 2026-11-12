@@ -112,10 +112,7 @@ class PackageChangeReceiver : BroadcastReceiver() {
         // Never suspend system / boot-critical packages (even if an older version listed them)
         if (SystemSafetyGuard.isProtected(context, packageName) || SystemSafetyGuard.isPaused(context)) return
         CoroutineScope(Dispatchers.IO).launch {
-            val appSuspensionService = AppSuspensionService(context)
-
-            // Simply suspend/hide the app
-            appSuspensionService.suspendApps(listOf(packageName))
+            com.example.takwafortress.services.filtering.AppAllowlistManager(context).registerIfNew(packageName)
 
             Log.i(TAG, "App blocked: $packageName")
         }

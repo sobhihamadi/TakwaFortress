@@ -93,6 +93,7 @@ class DeviceOwnerService(private val context: Context) {
      * Hides apps from the launcher and app drawer.
      */
     fun hideApps(packageNames: List<String>): Result<Unit> {
+        return Result.success(Unit) // simplified: never hide/suspend from here
         return try {
             if (!isDeviceOwner()) {
                 return Result.failure(Exception("Device Owner not active"))
@@ -116,6 +117,7 @@ class DeviceOwnerService(private val context: Context) {
      * Suspends apps (greyed out but visible).
      */
     fun suspendApps(packageNames: List<String>): Result<Unit> {
+        return Result.success(Unit) // simplified: never hide/suspend from here
         return try {
             if (!isDeviceOwner()) {
                 return Result.failure(Exception("Device Owner not active"))

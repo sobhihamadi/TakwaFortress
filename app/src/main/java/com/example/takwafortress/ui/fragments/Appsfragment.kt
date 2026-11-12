@@ -463,7 +463,7 @@ class AppsFragment : Fragment() {
     private fun blockAppNow(packageName: String) {
         try {
             val isNuclear = com.example.takwafortress.model.entities.BlockedApp.isNuclearApp(packageName)
-            if (isNuclear) devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+            if (isNuclear) devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
             else           devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to block $packageName", e)

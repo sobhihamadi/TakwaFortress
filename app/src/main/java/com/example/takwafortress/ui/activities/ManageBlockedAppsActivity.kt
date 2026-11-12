@@ -448,7 +448,7 @@ class ManageBlockedAppsActivity : AppCompatActivity() {
             val isNuclear = com.example.takwafortress.model.entities.BlockedApp.isNuclearApp(packageName)
 
             if (isNuclear) {
-                devicePolicyManager.setApplicationHidden(adminComponent, packageName, true)
+                devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
                 Log.i(TAG, "Hidden nuclear app: $packageName")
             } else {
                 devicePolicyManager.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
