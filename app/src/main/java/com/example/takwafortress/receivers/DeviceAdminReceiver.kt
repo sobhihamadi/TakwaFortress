@@ -48,20 +48,7 @@ class DeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         Log.i(TAG, "Disable requested - showing warning")
 
-        return """
-            ⚠️ Cannot Disable Taqwa
-            
-            Taqwa is your Device Owner and cannot be disabled while:
-            - Fortress period is active
-            - Commitment has not expired
-            
-            To disable Taqwa:
-            1. Wait for your commitment period to end
-            2. Complete the full duration
-            3. Then you can disable protection
-            
-            This is for your protection.
-        """.trimIndent()
+        return "Disabling Taqwa device admin turns off the app allowlist."
     }
 
     /**

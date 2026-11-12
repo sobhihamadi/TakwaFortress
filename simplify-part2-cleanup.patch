@@ -1,0 +1,1437 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index c7b3037..9ca5d3d 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -189,16 +189,6 @@
+                 <action android:name="com.example.takwafortress.ACTION_RECEIVE_CODE" />
+             </intent-filter>
+         </receiver>
+-        <receiver
+-            android:name=".receivers.PackageInstallReceiver"
+-            android:enabled="true"
+-            android:exported="true">
+-            <intent-filter>
+-                <action android:name="android.intent.action.PACKAGE_ADDED" />
+-                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+-                <data android:scheme="package" />
+-            </intent-filter>
+-        </receiver>
+ 
+         <!-- Package Change Receiver -->
+         <receiver
+diff --git a/app/src/main/java/com/example/takwafortress/receivers/DeviceAdminReceiver.kt b/app/src/main/java/com/example/takwafortress/receivers/DeviceAdminReceiver.kt
+index 20b386d..cb30cfe 100644
+--- a/app/src/main/java/com/example/takwafortress/receivers/DeviceAdminReceiver.kt
++++ b/app/src/main/java/com/example/takwafortress/receivers/DeviceAdminReceiver.kt
+@@ -48,20 +48,7 @@ class DeviceAdminReceiver : DeviceAdminReceiver() {
+     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
+         Log.i(TAG, "Disable requested - showing warning")
+ 
+-        return """
+-            ⚠️ Cannot Disable Taqwa
+-            
+-            Taqwa is your Device Owner and cannot be disabled while:
+-            - Fortress period is active
+-            - Commitment has not expired
+-            
+-            To disable Taqwa:
+-            1. Wait for your commitment period to end
+-            2. Complete the full duration
+-            3. Then you can disable protection
+-            
+-            This is for your protection.
+-        """.trimIndent()
++        return "Disabling Taqwa device admin turns off the app allowlist."
+     }
+ 
+     /**
+diff --git a/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt b/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt
+deleted file mode 100644
+index c4091fa..0000000
+--- a/app/src/main/java/com/example/takwafortress/receivers/PackageInstallReceiver.kt
++++ /dev/null
+@@ -1,106 +0,0 @@
+-package com.example.takwafortress.receivers
+-
+-import com.example.takwafortress.services.security.SystemSafetyGuard
+-import android.annotation.SuppressLint
+-import android.app.admin.DevicePolicyManager
+-import android.content.BroadcastReceiver
+-import android.content.ComponentName
+-import android.content.Context
+-import android.content.Intent
+-import android.content.pm.PackageManager
+-import android.net.Uri
+-import android.os.Build
+-import android.util.Log
+-import com.example.takwafortress.services.core.DeviceOwnerService
+-import com.example.takwafortress.services.filtering.ContentFilteringService
+-import kotlinx.coroutines.CoroutineScope
+-import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.launch
+-
+-class PackageInstallReceiver : BroadcastReceiver() {
+-
+-    companion object {
+-        private const val TAG = "PackageInstallReceiver"
+-    }
+-
+-    @SuppressLint("ServiceCast")
+-    override fun onReceive(context: Context, intent: Intent) {
+-        val action = intent.action
+-        val dataUri = intent.data
+-
+-        if ((action == Intent.ACTION_PACKAGE_ADDED ||
+-                    action == Intent.ACTION_PACKAGE_REPLACED) && dataUri != null
+-        ) {
+-
+-            val packageName = dataUri.schemeSpecificPart
+-
+-            if (packageName == ContentFilteringService.CHROME_PACKAGE ||
+-                packageName == context.packageName
+-            ) return
+-
+-            val pendingResult = goAsync()
+-
+-            CoroutineScope(Dispatchers.Default).launch {
+-                try {
+-                    // ✅ Only check Device Owner — remove chromeManagedActive entirely
+-                    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+-                            as DevicePolicyManager
+-                    val adminComponent = ComponentName(
+-                        context,
+-                        DeviceAdminReceiver::class.java
+-
+-
+-
+-
+-
+-                    )
+-
+-                    if (!dpm.isDeviceOwnerApp(context.packageName)) {
+-
+-                        return@launch
+-                    }
+-
+-                    if (isTargetPackageABrowser(context, packageName)) {
+-                        Log.d(TAG, "🚨 Browser installed: $packageName — blocking")
+-                        // no hiding (simplified)
+-                        Log.d(TAG, "✅ Blocked: $packageName")
+-                    }
+-
+-                } catch (e: Exception) {
+-                    Log.e(TAG, "❌ Error blocking browser", e)
+-                } finally {
+-                    pendingResult.finish()
+-                }
+-            }
+-        }
+-    }
+-
+-
+-    /**
+-     * Determines browser capabilities by pointing a web intent target directly at the new package
+-     */
+-    private fun isTargetPackageABrowser(context: Context, packageName: String): Boolean {
+-        if (SystemSafetyGuard.isPaused(context) || SystemSafetyGuard.isProtected(context, packageName)) return false
+-        return try {
+-            val webIntent = Intent(Intent.ACTION_VIEW).apply {
+-                data = Uri.parse(SystemSafetyGuard.BROWSER_PROBE_URI)
+-                addCategory(Intent.CATEGORY_BROWSABLE)
+-                setPackage(packageName) // Strictly targets only this specific app
+-            }
+-
+-            val matchedActivities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+-                context.packageManager.queryIntentActivities(
+-                    webIntent,
+-                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong())
+-                )
+-            } else {
+-                @Suppress("DEPRECATION")
+-                context.packageManager.queryIntentActivities(webIntent, PackageManager.MATCH_ALL)
+-            }
+-
+-            matchedActivities.isNotEmpty()
+-        } catch (e: Exception) {
+-            false
+-        }
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/BlockedKeywordsManager.kt b/app/src/main/java/com/example/takwafortress/services/filtering/BlockedKeywordsManager.kt
+deleted file mode 100644
+index 6126a57..0000000
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/BlockedKeywordsManager.kt
++++ /dev/null
+@@ -1,131 +0,0 @@
+-package com.example.takwafortress.services.filtering
+-
+-import android.content.Context
+-import android.content.SharedPreferences
+-
+-/**
+- * Manages the list of blocked search keywords (up to 100).
+- * Stored in SharedPreferences so they persist across reboots.
+- *
+- * Usage:
+- *   val mgr = BlockedKeywordsManager(context)
+- *   mgr.contains("porn")   // true
+- *   mgr.addKeyword("xxx")
+- *   mgr.getAll()           // full list
+- */
+-class BlockedKeywordsManager(context: Context) {
+-
+-    companion object {
+-        private const val PREFS_NAME  = "takwa_blocked_keywords"
+-        private const val KEY_WORDS   = "blocked_words"
+-        private const val MAX_WORDS   = 100
+-
+-        // ── Default blocked keywords (Arabic + English) ──────────────────────
+-        // Add/remove from this list freely. All checks are lowercase.
+-        val DEFAULT_KEYWORDS = setOf(
+-            // English — explicit
+-            "porn", "pornhub", "xvideos", "xnxx", "xxx", "sex", "nude", "naked",
+-            "hentai", "onlyfans", "escort", "prostitute", "masturbat", "orgasm",
+-            "erotic", "fetish", "bdsm", "camgirl", "stripper", "blowjob",
+-            "hardcore", "nsfw", "lewd", "slutty", "boobs", "vagina", "penis",
+-            "anal sex", "threesome", "gangbang", "creampie", "milf", "teen sex",
+-            "amateur porn", "free porn", "watch porn", "download porn",
+-            "adult video", "adult movie", "adult film", "adult site",
+-            "sexy video", "hot video", "nude photo", "nude pic","doyouth twitter","dayouth twitter",
+-            "dyouth twitter","deyouth twitter",
+-
+-            // English — adjacent / gateway
+-            "dating app", "hookup", "tinder sex", "snapchat nude",
+-            "instagram nude", "reddit nsfw", "4chan", "rule34",
+-            "swimsuit model", "bikini model", "playboy", "penthouse",
+-
+-            // Arabic — explicit (transliterated)
+-            "سكس", "نيك", "بزاز", "كس", "طيز", "شرموطة", "عاهرة",
+-            "افلام سكس", "صور سكس", "فيديو سكس", "مواقع سكس",
+-            "بنات عاريات", "نساء عاريات", "جنس", "ممارسة الجنس",
+-            "مص", "لحس", "شهوة", "إثارة جنسية", "إباحي",
+-            "موقع إباحي", "أفلام إباحية", "صور إباحية",
+-" ديوت تويتر","ديوث تويتر","ديوث امي تويتر",
+-            // Urdu/Hindi transliterated
+-            "chudai", "chut", "lund", "gaand", "randi", "bhosdike",
+-            "harami", "sexy video", "desi porn", "indian sex",
+-
+-            // French
+-            "porno", "sexe", "nue", "escorte",
+-
+-            // Turkish
+-            "porno izle", "sex izle", "sikiş"
+-        )
+-    }
+-
+-    private val prefs: SharedPreferences =
+-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+-
+-    init {
+-        // Seed defaults on first run
+-        if (!prefs.contains(KEY_WORDS)) {
+-            saveAll(DEFAULT_KEYWORDS.toMutableSet())
+-        }
+-    }
+-
+-    // ── Public API ────────────────────────────────────────────────────────────
+-
+-    /**
+-     * Returns true if [text] contains any blocked keyword.
+-     * Case-insensitive, trims whitespace.
+-     */
+-    fun contains(text: String): Boolean {
+-        val lower = text.lowercase().trim()
+-        if (lower.isBlank()) return false
+-        return getAll().any { keyword -> lower.contains(keyword.lowercase()) }
+-    }
+-
+-    /** Returns the matched keyword if found, null otherwise. */
+-    fun findMatch(text: String): String? {
+-        val lower = text.lowercase().trim()
+-        if (lower.isBlank()) return null
+-        return getAll().firstOrNull { keyword -> lower.contains(keyword.lowercase()) }
+-    }
+-
+-    /** Returns all blocked keywords. */
+-    fun getAll(): Set<String> =
+-        prefs.getStringSet(KEY_WORDS, DEFAULT_KEYWORDS) ?: DEFAULT_KEYWORDS
+-
+-    /**
+-     * Adds a new keyword. Enforces MAX_WORDS limit.
+-     * Returns false if limit reached.
+-     */
+-    fun addKeyword(word: String): Boolean {
+-        val current = getAll().toMutableSet()
+-        if (current.size >= MAX_WORDS) return false
+-        current.add(word.lowercase().trim())
+-        saveAll(current)
+-        return true
+-    }
+-
+-    /** Removes a keyword. */
+-    fun removeKeyword(word: String) {
+-        val current = getAll().toMutableSet()
+-        current.remove(word.lowercase().trim())
+-        saveAll(current)
+-    }
+-
+-    /** Replaces the entire list (up to MAX_WORDS). */
+-    fun setAll(words: Set<String>) {
+-        saveAll(words.take(MAX_WORDS).map { it.lowercase().trim() }.toMutableSet())
+-    }
+-
+-    /** Resets to factory defaults. */
+-    fun resetToDefaults() {
+-        saveAll(DEFAULT_KEYWORDS.toMutableSet())
+-    }
+-
+-    /** How many keywords are stored. */
+-    fun count(): Int = getAll().size
+-
+-    // ── Private ───────────────────────────────────────────────────────────────
+-
+-    private fun saveAll(words: MutableSet<String>) {
+-        prefs.edit().putStringSet(KEY_WORDS, words).apply()
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/KeywordAccessibilityService.kt b/app/src/main/java/com/example/takwafortress/services/filtering/KeywordAccessibilityService.kt
+deleted file mode 100644
+index 40b8f81..0000000
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/KeywordAccessibilityService.kt
++++ /dev/null
+@@ -1,215 +0,0 @@
+-package com.example.takwafortress.services.filtering
+-
+-import android.accessibilityservice.AccessibilityService
+-import android.accessibilityservice.AccessibilityServiceInfo
+-import android.os.Bundle
+-import android.util.Log
+-import android.view.accessibility.AccessibilityEvent
+-import android.view.accessibility.AccessibilityNodeInfo
+-
+-/**
+- * Accessibility Service — Keyword Detection Layer
+- *
+- * Monitors Chrome's address bar (and search bar) for blocked keywords.
+- * When a match is detected:
+- *   1. Clears the address bar text via AccessibilityAction
+- *   2. Shows a fullscreen warning overlay (KeywordWarningOverlay)
+- *
+- * Activated automatically by DevicePolicyManager when the user taps
+- * "Activate Full Protection" — no Settings screen needed.
+- *
+- * Watches ONLY: com.android.chrome
+- * Events  ONLY: TYPE_VIEW_TEXT_CHANGED, TYPE_WINDOW_CONTENT_CHANGED
+- */
+-class KeywordAccessibilityService : AccessibilityService() {
+-
+-    companion object {
+-        private const val TAG             = "KeywordA11yService"
+-        const val CHROME_PACKAGE          = "com.android.chrome"
+-
+-        // Node class names that represent the address / search bar in Chrome
+-        private val ADDRESS_BAR_CLASSES = setOf(
+-            "android.widget.EditText",
+-            "android.widget.AutoCompleteTextView"
+-        )
+-
+-        // Minimum text length to start checking (avoids single-letter false-hits)
+-        private const val MIN_CHECK_LENGTH = 3
+-
+-        // Cooldown between clears (ms) — prevents flickering on rapid keystrokes
+-        private const val CLEAR_COOLDOWN_MS = 1_500L
+-    }
+-
+-    private lateinit var keywordsManager : BlockedKeywordsManager
+-    private lateinit var warningOverlay  : KeywordWarningOverlay
+-
+-    private var lastClearTimestamp = 0L
+-
+-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+-
+-    override fun onServiceConnected() {
+-        super.onServiceConnected()
+-        keywordsManager = BlockedKeywordsManager(applicationContext)
+-        warningOverlay  = KeywordWarningOverlay(applicationContext)
+-
+-        // Configure which events and packages to listen to
+-        serviceInfo = AccessibilityServiceInfo().apply {
+-            eventTypes =
+-                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+-                        AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+-                        AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+-            packageNames  = arrayOf(CHROME_PACKAGE)
+-            feedbackType  = AccessibilityServiceInfo.FEEDBACK_GENERIC
+-            flags         =
+-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+-                        AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+-            notificationTimeout = 100  // ms — responsive but not too aggressive
+-        }
+-
+-        Log.d(TAG, "✅ KeywordAccessibilityService connected — monitoring Chrome")
+-    }
+-
+-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+-        event ?: return
+-
+-        // Only care about Chrome
+-        if (event.packageName?.toString() != CHROME_PACKAGE) return
+-
+-        when (event.eventType) {
+-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+-                // Most direct: fired when user types in any EditText
+-                val text = event.text?.joinToString("") ?: return
+-                checkAndBlock(text, event.source)
+-            }
+-
+-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+-                // Fallback: scan the whole window for address bar text
+-                scanWindowForAddressBar(rootInActiveWindow)
+-            }
+-        }
+-    }
+-
+-    override fun onInterrupt() {
+-        Log.w(TAG, "KeywordAccessibilityService interrupted")
+-        warningOverlay.dismiss()
+-    }
+-
+-    override fun onDestroy() {
+-        super.onDestroy()
+-        warningOverlay.dismiss()
+-        Log.d(TAG, "KeywordAccessibilityService destroyed")
+-    }
+-
+-    // ── Core logic ────────────────────────────────────────────────────────────
+-
+-    /**
+-     * Checks [text] against the blocked keywords list.
+-     * If a match is found and cooldown has passed:
+-     *   - Clears the node's text
+-     *   - Shows the warning overlay
+-     */
+-    private fun checkAndBlock(text: String, sourceNode: AccessibilityNodeInfo?) {
+-        if (text.length < MIN_CHECK_LENGTH) return
+-
+-        val matchedWord = keywordsManager.findMatch(text) ?: return
+-
+-        Log.w(TAG, "🚨 Blocked keyword detected: \"$matchedWord\" in text: \"$text\"")
+-
+-        val now = System.currentTimeMillis()
+-        if (now - lastClearTimestamp < CLEAR_COOLDOWN_MS) return   // still in cooldown
+-
+-        lastClearTimestamp = now
+-
+-        // 1. Clear the address bar
+-        clearNode(sourceNode)
+-
+-        // 2. Also try to clear via full window scan (belt + suspenders)
+-        clearAddressBarInWindow(rootInActiveWindow)
+-
+-        // 3. Show warning overlay
+-        warningOverlay.show(matchedWord)
+-
+-        Log.d(TAG, "✅ Address bar cleared. Overlay shown.")
+-    }
+-
+-    /**
+-     * Walks the accessibility node tree to find Chrome's address bar EditText,
+-     * reads its text, and calls checkAndBlock on it.
+-     */
+-    private fun scanWindowForAddressBar(root: AccessibilityNodeInfo?) {
+-        root ?: return
+-        traverseNodes(root) { node ->
+-            if (node.className?.toString() in ADDRESS_BAR_CLASSES && node.isEditable) {
+-                val nodeText = node.text?.toString() ?: ""
+-                if (nodeText.length >= MIN_CHECK_LENGTH) {
+-                    checkAndBlock(nodeText, node)
+-                }
+-            }
+-        }
+-    }
+-
+-    /**
+-     * Finds all editable address-bar nodes and clears them.
+-     */
+-    private fun clearAddressBarInWindow(root: AccessibilityNodeInfo?) {
+-        root ?: return
+-        traverseNodes(root) { node ->
+-            if (node.className?.toString() in ADDRESS_BAR_CLASSES && node.isEditable) {
+-                clearNode(node)
+-            }
+-        }
+-    }
+-
+-    /**
+-     * Clears text in [node] using AccessibilityAction SET_TEXT.
+-     * Falls back to selecting all + DELETE if SET_TEXT isn't supported.
+-     */
+-    private fun clearNode(node: AccessibilityNodeInfo?) {
+-        node ?: return
+-        try {
+-            // Primary method: SET_TEXT with empty string
+-            val args = Bundle().apply {
+-                putCharSequence(
+-                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+-                    ""
+-                )
+-            }
+-            val cleared = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+-
+-            if (!cleared) {
+-                // Fallback: select all then cut
+-                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+-                node.performAction(AccessibilityNodeInfo.ACTION_SELECT)
+-                val cutArgs = Bundle().apply {
+-                    putCharSequence(
+-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, ""
+-                    )
+-                }
+-                node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, cutArgs)
+-            }
+-
+-            Log.d(TAG, "Node cleared: $cleared")
+-        } catch (e: Exception) {
+-            Log.e(TAG, "Failed to clear node: ${e.message}")
+-        }
+-    }
+-
+-    // ── Utility ───────────────────────────────────────────────────────────────
+-
+-    /**
+-     * Depth-first traversal of accessibility node tree.
+-     * Recycles nodes after visiting to avoid memory leaks.
+-     */
+-    private fun traverseNodes(
+-        node: AccessibilityNodeInfo,
+-        visitor: (AccessibilityNodeInfo) -> Unit
+-    ) {
+-        visitor(node)
+-        for (i in 0 until node.childCount) {
+-            val child = node.getChild(i) ?: continue
+-            traverseNodes(child, visitor)
+-            child.recycle()
+-        }
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/KeywordWarningOverlay.kt b/app/src/main/java/com/example/takwafortress/services/filtering/KeywordWarningOverlay.kt
+deleted file mode 100644
+index 6c39052..0000000
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/KeywordWarningOverlay.kt
++++ /dev/null
+@@ -1,256 +0,0 @@
+-package com.example.takwafortress.services.filtering
+-
+-import android.content.Context
+-import android.graphics.Color
+-import android.graphics.PixelFormat
+-import android.graphics.Typeface
+-import android.graphics.drawable.GradientDrawable
+-import android.os.Build
+-import android.os.Handler
+-import android.os.Looper
+-import android.view.Gravity
+-import android.view.View
+-import android.view.WindowManager
+-import android.widget.LinearLayout
+-import android.widget.TextView
+-
+-/**
+- * Draws a fullscreen warning overlay (TYPE_APPLICATION_OVERLAY) when a
+- * blocked keyword is detected in Chrome's address bar.
+- *
+- * Requires: android.permission.SYSTEM_ALERT_WINDOW  — NOT needed because
+- * we use TYPE_ACCESSIBILITY_OVERLAY from within the AccessibilityService,
+- * which does not require that permission.
+- *
+- * Auto-dismisses after [AUTO_DISMISS_MS] milliseconds.
+- */
+-class KeywordWarningOverlay(private val context: Context) {
+-
+-    companion object {
+-        private const val AUTO_DISMISS_MS = 4_000L   // 4 seconds
+-
+-        // ── Palette (mirrors DashboardFragment) ──────────────────────────────
+-        private val BG_DARK     = Color.parseColor("#161B27")
+-        private val CARD_BG     = Color.parseColor("#1E2535")
+-        private val CARD_BORDER = Color.parseColor("#2A3347")
+-        private val BLUE        = Color.parseColor("#4A90D9")
+-        private val ORANGE      = Color.parseColor("#D4924A")
+-        private val ORANGE_DIM  = Color.parseColor("#2A1E0E")
+-        private val TEXT_WHITE  = Color.parseColor("#EFF3F8")
+-        private val TEXT_SOFT   = Color.parseColor("#D4DCE8")
+-        private val TEXT_GREY   = Color.parseColor("#7A8BA0")
+-        private val GREEN       = Color.parseColor("#5DB88A")
+-    }
+-
+-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+-    private var overlayView: View? = null
+-    private val handler = Handler(Looper.getMainLooper())
+-    private val dismissRunnable = Runnable { dismiss() }
+-
+-    // ── Public API ────────────────────────────────────────────────────────────
+-
+-    /**
+-     * Shows the warning overlay for [matchedKeyword].
+-     * Safe to call from any thread.
+-     * If overlay is already visible, resets the auto-dismiss timer.
+-     */
+-    fun show(matchedKeyword: String) {
+-        handler.post {
+-            // Already showing — just reset timer
+-            if (overlayView != null) {
+-                handler.removeCallbacks(dismissRunnable)
+-                handler.postDelayed(dismissRunnable, AUTO_DISMISS_MS)
+-                return@post
+-            }
+-
+-            val view = buildOverlayView(matchedKeyword)
+-            val params = buildLayoutParams()
+-
+-            try {
+-                windowManager.addView(view, params)
+-                overlayView = view
+-                handler.postDelayed(dismissRunnable, AUTO_DISMISS_MS)
+-            } catch (e: Exception) {
+-                android.util.Log.e("KeywordWarningOverlay", "Failed to add overlay: ${e.message}")
+-            }
+-        }
+-    }
+-
+-    /** Dismisses the overlay immediately. */
+-    fun dismiss() {
+-        handler.post {
+-            handler.removeCallbacks(dismissRunnable)
+-            overlayView?.let {
+-                try { windowManager.removeView(it) } catch (_: Exception) {}
+-                overlayView = null
+-            }
+-        }
+-    }
+-
+-    // ── Build overlay view ────────────────────────────────────────────────────
+-
+-    private fun buildOverlayView(matchedKeyword: String): View {
+-        val ctx = context
+-
+-        // Root — full screen, dark background
+-        val root = LinearLayout(ctx).apply {
+-            orientation = LinearLayout.VERTICAL
+-            gravity = Gravity.CENTER
+-            setBackgroundColor(Color.argb(230, 22, 27, 39)) // BG_DARK @ 90% opacity
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.MATCH_PARENT
+-            )
+-        }
+-
+-        // Card
+-        val card = LinearLayout(ctx).apply {
+-            orientation = LinearLayout.VERTICAL
+-            gravity = Gravity.CENTER
+-            setPadding(dp(28), dp(32), dp(28), dp(28))
+-            background = GradientDrawable().apply {
+-                shape = GradientDrawable.RECTANGLE
+-                setColor(CARD_BG)
+-                setStroke(dp(1), CARD_BORDER)
+-                cornerRadius = dp(16).toFloat()
+-            }
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply {
+-                leftMargin  = dp(24)
+-                rightMargin = dp(24)
+-            }
+-        }
+-
+-        // Shield emoji
+-        card.addView(TextView(ctx).apply {
+-            text = "🛡️"
+-            textSize = 48f
+-            gravity = Gravity.CENTER
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(12) }
+-        })
+-
+-        // Title
+-        card.addView(TextView(ctx).apply {
+-            text = "TAKWA FORTRESS"
+-            textSize = 11f
+-            setTextColor(TEXT_GREY)
+-            gravity = Gravity.CENTER
+-            letterSpacing = 0.25f
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(6) }
+-        })
+-
+-        // Warning headline
+-        card.addView(TextView(ctx).apply {
+-            text = "Search Blocked"
+-            textSize = 22f
+-            setTextColor(ORANGE)
+-            gravity = Gravity.CENTER
+-            typeface = Typeface.DEFAULT_BOLD
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(16) }
+-        })
+-
+-        // Divider
+-        card.addView(View(ctx).apply {
+-            setBackgroundColor(Color.parseColor("#252E3F"))
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+-            ).apply { bottomMargin = dp(16) }
+-        })
+-
+-        // Islamic reminder
+-        card.addView(TextView(ctx).apply {
+-            text = "وَاللَّهُ يَعْلَمُ مَا تُسِرُّونَ وَمَا تُعْلِنُونَ"
+-            textSize = 16f
+-            setTextColor(TEXT_WHITE)
+-            gravity = Gravity.CENTER
+-            typeface = Typeface.DEFAULT_BOLD
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(8) }
+-        })
+-
+-        card.addView(TextView(ctx).apply {
+-            text = "\"Allah knows what you conceal and what you reveal.\"\n— Quran 16:19"
+-            textSize = 12f
+-            setTextColor(TEXT_GREY)
+-            gravity = Gravity.CENTER
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(20) }
+-        })
+-
+-        // Motivational message
+-        card.addView(TextView(ctx).apply {
+-            text = "You committed to protecting yourself.\nStay strong. This search has been cleared."
+-            textSize = 13f
+-            setTextColor(TEXT_SOFT)
+-            gravity = Gravity.CENTER
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.MATCH_PARENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { bottomMargin = dp(20) }
+-        })
+-
+-        // Progress pill — "Returning to safety in Xs"
+-        val pillBg = GradientDrawable().apply {
+-            shape = GradientDrawable.RECTANGLE
+-            setColor(Color.parseColor("#1A3040"))
+-            cornerRadius = dp(20).toFloat()
+-        }
+-        card.addView(TextView(ctx).apply {
+-            text = "✅  Returning to safety in ${AUTO_DISMISS_MS / 1000}s…"
+-            textSize = 12f
+-            setTextColor(GREEN)
+-            gravity = Gravity.CENTER
+-            background = pillBg
+-            setPadding(dp(16), dp(8), dp(16), dp(8))
+-            layoutParams = LinearLayout.LayoutParams(
+-                LinearLayout.LayoutParams.WRAP_CONTENT,
+-                LinearLayout.LayoutParams.WRAP_CONTENT
+-            ).apply { gravity = Gravity.CENTER_HORIZONTAL }
+-        })
+-
+-        root.addView(card)
+-
+-        // Tap anywhere to dismiss early
+-        root.setOnClickListener { dismiss() }
+-
+-        return root
+-    }
+-
+-    private fun buildLayoutParams(): WindowManager.LayoutParams {
+-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+-        else
+-            @Suppress("DEPRECATION")
+-            WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY
+-
+-        return WindowManager.LayoutParams(
+-            WindowManager.LayoutParams.MATCH_PARENT,
+-            WindowManager.LayoutParams.MATCH_PARENT,
+-            type,
+-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+-                    or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+-                    or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+-            PixelFormat.TRANSLUCENT
+-        ).apply {
+-            gravity = Gravity.CENTER
+-        }
+-    }
+-
+-    private fun dp(v: Int): Int =
+-        (v * context.resources.displayMetrics.density).toInt()
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/services/filtering/WebViewKillerService.kt b/app/src/main/java/com/example/takwafortress/services/filtering/WebViewKillerService.kt
+deleted file mode 100644
+index 2096dc6..0000000
+--- a/app/src/main/java/com/example/takwafortress/services/filtering/WebViewKillerService.kt
++++ /dev/null
+@@ -1,176 +0,0 @@
+-package com.example.takwafortress.services.filtering
+-
+-
+-import android.accessibilityservice.AccessibilityService
+-import android.content.Context
+-import android.provider.Settings
+-import android.view.accessibility.AccessibilityEvent
+-
+-class WebViewKillerService(private val context: Context) {
+-
+-    /**
+-     * Checks if Accessibility Service is enabled for Taqwa.
+-     * Required for WebView killing functionality.
+-     */
+-    fun isAccessibilityServiceEnabled(): Boolean {
+-        val enabledServices = Settings.Secure.getString(
+-            context.contentResolver,
+-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+-        ) ?: return false
+-
+-        val packageName = context.packageName
+-        return enabledServices.contains("$packageName/")
+-    }
+-
+-    /**
+-     * Gets user instructions for enabling Accessibility Service.
+-     */
+-    fun getAccessibilityInstructions(): String {
+-        return """
+-            🔍 ENABLE WEBVIEW KILLER
+-            
+-            To block in-app browsers (WebViews), you need to:
+-            
+-            1. Go to Settings → Accessibility
+-            2. Find "Taqwa WebView Blocker"
+-            3. Turn it ON
+-            4. Tap "Allow" on permission popup
+-            
+-            What are WebViews?
+-            - Mini-browsers inside apps (Instagram, Facebook, Twitter)
+-            - Links open inside the app instead of Chrome
+-            - Bypass our DNS filter and Chrome protections
+-            
+-            What we'll do:
+-            ✅ Detect when WebView opens
+-            ✅ Kill it instantly
+-            ✅ Force link to open in Managed Chrome
+-            ✅ Your protection stays intact
+-            
+-            This is REQUIRED for full protection.
+-        """.trimIndent()
+-    }
+-
+-    /**
+-     * Checks WebView killer status.
+-     */
+-    fun getWebViewKillerStatus(): WebViewKillerStatus {
+-        return if (isAccessibilityServiceEnabled()) {
+-            WebViewKillerStatus.Active
+-        } else {
+-            WebViewKillerStatus.Inactive
+-        }
+-    }
+-
+-    /**
+-     * Gets list of apps that commonly use WebViews.
+-     */
+-    fun getWebViewApps(): List<String> {
+-        return listOf(
+-            "com.instagram.android",
+-            "com.facebook.katana",
+-            "com.twitter.android",
+-            "com.snapchat.android",
+-            "com.zhiliaoapp.musically", // TikTok
+-            "com.linkedin.android",
+-            "com.reddit.frontpage",
+-            "com.pinterest",
+-            "com.tumblr",
+-            "com.medium.reader"
+-        )
+-    }
+-
+-    /**
+-     * Explains the WebView threat.
+-     */
+-    fun getWebViewThreatExplanation(): String {
+-        return """
+-            ⚠️ THE WEBVIEW VULNERABILITY
+-            
+-            SCENARIO:
+-            1. You open Instagram (allowed app)
+-            2. Someone posts a link to a website
+-            3. You tap the link
+-            4. Instagram opens it in an IN-APP BROWSER (WebView)
+-            5. This bypasses Chrome protections
+-            6. DNS filter still works, but Incognito/SafeSearch don't
+-            
+-            THE PROBLEM:
+-            ❌ WebViews can have private browsing
+-            ❌ WebViews can disable SafeSearch
+-            ❌ WebViews can clear history
+-            ❌ We don't control them like Chrome
+-            
+-            THE SOLUTION:
+-            ✅ Taqwa detects WebView opening
+-            ✅ Kills it within 100ms
+-            ✅ Redirects link to Managed Chrome
+-            ✅ Full protection restored
+-            
+-            TECHNICAL DETAILS:
+-            - Uses AccessibilityService API
+-            - Monitors for WebView class instantiation
+-            - Kills process immediately
+-            - Extracts URL and opens in Chrome
+-            
+-            Status: ${getWebViewKillerStatus()}
+-        """.trimIndent()
+-    }
+-
+-    /**
+-     * Tests WebView killer (for debugging).
+-     */
+-    fun testWebViewKiller(): WebViewKillerTestResult {
+-        if (!isAccessibilityServiceEnabled()) {
+-            return WebViewKillerTestResult.NotEnabled
+-        }
+-
+-        // TODO: Implement actual test by spawning a test WebView
+-        return WebViewKillerTestResult.Success("WebView killer is active and monitoring")
+-    }
+-}
+-
+-sealed class WebViewKillerStatus {
+-    object Active : WebViewKillerStatus()
+-    object Inactive : WebViewKillerStatus()
+-}
+-
+-sealed class WebViewKillerTestResult {
+-    data class Success(val message: String) : WebViewKillerTestResult()
+-    object NotEnabled : WebViewKillerTestResult()
+-    data class Failed(val reason: String) : WebViewKillerTestResult()
+-}
+-
+-/**
+- * Accessibility Service implementation for killing WebViews.
+- * This class should be in a separate file: services/TaqwaAccessibilityService.kt
+- */
+-abstract class TaqwaWebViewKillerAccessibilityService : AccessibilityService() {
+-
+-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+-        event?.let {
+-            // Detect WebView creation
+-            if (isWebViewEvent(it)) {
+-                killWebView(it)
+-            }
+-        }
+-    }
+-
+-    private fun isWebViewEvent(event: AccessibilityEvent): Boolean {
+-        // Check if event is from a WebView class
+-        val className = event.className?.toString() ?: return false
+-        return className.contains("WebView") ||
+-                className.contains("webkit")
+-    }
+-
+-    private fun killWebView(event: AccessibilityEvent) {
+-        // TODO: Implement WebView killing logic
+-        // 1. Get the URL from WebView
+-        // 2. Close the WebView
+-        // 3. Open URL in Chrome with Intent
+-    }
+-
+-    override fun onInterrupt() {
+-        // Handle service interruption
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/services/monitoring/BrowserDetectionService.kt b/app/src/main/java/com/example/takwafortress/services/monitoring/BrowserDetectionService.kt
+deleted file mode 100644
+index 1b3ca08..0000000
+--- a/app/src/main/java/com/example/takwafortress/services/monitoring/BrowserDetectionService.kt
++++ /dev/null
+@@ -1,245 +0,0 @@
+-package com.example.takwafortress.services.monitoring
+-
+-
+-import android.content.Context
+-import android.content.Intent
+-import android.content.pm.PackageManager
+-import android.content.pm.ResolveInfo
+-import android.net.Uri
+-import com.example.takwafortress.util.constants.BlockedPackages
+-
+-class BrowserDetectionService(private val context: Context) {
+-
+-    private val packageManager = context.packageManager
+-
+-    /**
+-     * Detects all browser apps installed on device (including unknown ones).
+-     */
+-    fun detectAllBrowsers(): List<BrowserInfo> {
+-        val browsers = mutableListOf<BrowserInfo>()
+-
+-        // Method 1: Check against known browser list (assuming it's a Map<String, String>)
+-        BlockedPackages.BROWSERS.keys.forEach { packageName ->
+-            if (isAppInstalled(packageName)) {
+-                browsers.add(
+-                    BrowserInfo(
+-                        packageName = packageName,
+-                        appName = getAppName(packageName),
+-                        isKnown = true,
+-                        isBlocked = true
+-                    )
+-                )
+-            }
+-        }
+-
+-        // Method 2: Query all apps that can handle http:// URLs
+-        val unknownBrowsers = detectUnknownBrowsers()
+-        browsers.addAll(unknownBrowsers)
+-
+-        return browsers.distinctBy { it.packageName }
+-    }
+-
+-    /**
+-     * Detects browsers not in our known list (new or obscure browsers).
+-     */
+-    private fun detectUnknownBrowsers(): List<BrowserInfo> {
+-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
+-        val resolveInfoList: List<ResolveInfo> = packageManager.queryIntentActivities(
+-            intent,
+-            PackageManager.MATCH_DEFAULT_ONLY
+-        )
+-
+-        val unknownBrowsers = mutableListOf<BrowserInfo>()
+-
+-        resolveInfoList.forEach { resolveInfo ->
+-            val packageName = resolveInfo.activityInfo.packageName
+-
+-            // Skip if it's Chrome or already in the known list
+-            if (packageName != "com.android.chrome" && !BlockedPackages.BROWSERS.containsKey(packageName)) {
+-                unknownBrowsers.add(
+-                    BrowserInfo(
+-                        packageName = packageName,
+-                        appName = getAppName(packageName),
+-                        isKnown = false,
+-                        isBlocked = false
+-                    )
+-                )
+-            }
+-        }
+-
+-        return unknownBrowsers
+-    }
+-
+-    /**
+-     * Checks if a package is a browser app.
+-     */
+-    fun isBrowserApp(packageName: String): Boolean {
+-        // Check known list
+-        if (packageName in BlockedPackages.BROWSERS) return true
+-
+-        // Check if it can handle http URLs
+-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
+-        intent.setPackage(packageName)
+-
+-        val resolveInfo = packageManager.resolveActivity(
+-            intent,
+-            PackageManager.MATCH_DEFAULT_ONLY
+-        )
+-
+-        return resolveInfo != null
+-    }
+-
+-    /**
+-     * Gets default browser on the device.
+-     */
+-    fun getDefaultBrowser(): String? {
+-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("http://www.google.com"))
+-        val resolveInfo = packageManager.resolveActivity(
+-            intent,
+-            PackageManager.MATCH_DEFAULT_ONLY
+-        )
+-
+-        return resolveInfo?.activityInfo?.packageName
+-    }
+-
+-    /**
+-     * Checks if Chrome is the default browser.
+-     */
+-    fun isChromeDefaultBrowser(): Boolean {
+-        return getDefaultBrowser() == "com.android.chrome"
+-    }
+-
+-    /**
+-     * Gets browser detection report.
+-     */
+-    fun getBrowserReport(): BrowserReport {
+-        val allBrowsers = detectAllBrowsers()
+-        val knownBrowsers = allBrowsers.filter { it.isKnown }
+-        val unknownBrowsers = allBrowsers.filter { !it.isKnown }
+-        val defaultBrowser = getDefaultBrowser()
+-
+-        return BrowserReport(
+-            totalBrowsers = allBrowsers.size,
+-            knownBrowsers = knownBrowsers,
+-            unknownBrowsers = unknownBrowsers,
+-            defaultBrowser = defaultBrowser,
+-            isChromeDefault = isChromeDefaultBrowser()
+-        )
+-    }
+-
+-    /**
+-     * Gets browser threat level assessment.
+-     */
+-    fun assessThreatLevel(): BrowserThreatLevel {
+-        val report = getBrowserReport()
+-
+-        return when {
+-            !report.isChromeDefault -> BrowserThreatLevel.Critical(
+-                "Default browser is not Chrome"
+-            )
+-            report.unknownBrowsers.isNotEmpty() -> BrowserThreatLevel.High(
+-                "${report.unknownBrowsers.size} unknown browser(s) detected"
+-            )
+-            report.knownBrowsers.size > 1 -> BrowserThreatLevel.Medium(
+-                "${report.knownBrowsers.size - 1} blocked browser(s) installed"
+-            )
+-            else -> BrowserThreatLevel.Low
+-        }
+-    }
+-
+-    /**
+-     * Gets explanation of browser detection.
+-     */
+-    fun getBrowserDetectionExplanation(): String {
+-        val report = getBrowserReport()
+-
+-        return """
+-            🔍 BROWSER DETECTION REPORT
+-            
+-            DEFAULT BROWSER: ${getAppName(report.defaultBrowser ?: "unknown")}
+-            ${if (report.isChromeDefault) "✅ Chrome is default" else "❌ Chrome is NOT default"}
+-            
+-            KNOWN BROWSERS (${report.knownBrowsers.size}):
+-            ${report.knownBrowsers.joinToString("\n") { "- ${it.appName} (${if (it.isBlocked) "BLOCKED" else "active"})" }}
+-            
+-            UNKNOWN BROWSERS (${report.unknownBrowsers.size}):
+-            ${if (report.unknownBrowsers.isEmpty()) "None detected ✅" else report.unknownBrowsers.joinToString("\n") { "⚠️ ${it.appName}" }}
+-            
+-            THREAT LEVEL: ${assessThreatLevel()}
+-            
+-            ${getThreatExplanation(assessThreatLevel())}
+-        """.trimIndent()
+-    }
+-
+-    private fun getThreatExplanation(threatLevel: BrowserThreatLevel): String {
+-        return when (threatLevel) {
+-            is BrowserThreatLevel.Critical -> """
+-                🚨 CRITICAL: ${threatLevel.reason}
+-                ACTION REQUIRED: Set Chrome as default browser
+-            """.trimIndent()
+-
+-            is BrowserThreatLevel.High -> """
+-                ⚠️ HIGH: ${threatLevel.reason}
+-                RECOMMENDATION: Uninstall unknown browsers
+-            """.trimIndent()
+-
+-            is BrowserThreatLevel.Medium -> """
+-                ⚠️ MEDIUM: ${threatLevel.reason}
+-                STATUS: Blocked browsers are suspended
+-            """.trimIndent()
+-
+-            BrowserThreatLevel.Low -> """
+-                ✅ LOW: All clear
+-                Only Chrome detected and active
+-            """.trimIndent()
+-        }
+-    }
+-
+-    /**
+-     * Checks if app is installed.
+-     */
+-    private fun isAppInstalled(packageName: String): Boolean {
+-        return try {
+-            packageManager.getPackageInfo(packageName, 0)
+-            true
+-        } catch (e: PackageManager.NameNotFoundException) {
+-            false
+-        }
+-    }
+-
+-    /**
+-     * Gets app name from package.
+-     */
+-    private fun getAppName(packageName: String): String {
+-        return try {
+-            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+-            packageManager.getApplicationLabel(appInfo).toString()
+-        } catch (e: Exception) {
+-            packageName
+-        }
+-    }
+-}
+-
+-private fun PackageManager.getApplicationInfo(packageName: String?, flags: Int) {}
+-
+-data class BrowserInfo(
+-    val packageName: String?,
+-    val appName: String?,
+-    val isKnown: Boolean,
+-    val isBlocked: Boolean
+-)
+-
+-data class BrowserReport(
+-    val totalBrowsers: Int,
+-    val knownBrowsers: List<BrowserInfo>,
+-    val unknownBrowsers: List<BrowserInfo>,
+-    val defaultBrowser: String?,
+-    val isChromeDefault: Boolean
+-)
+-
+-sealed class BrowserThreatLevel {
+-    data class Critical(val reason: String) : BrowserThreatLevel()
+-    data class High(val reason: String) : BrowserThreatLevel()
+-    data class Medium(val reason: String) : BrowserThreatLevel()
+-    object Low : BrowserThreatLevel()
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/example/takwafortress/util/constants/BlockedPackages.kt b/app/src/main/java/com/example/takwafortress/util/constants/BlockedPackages.kt
+index 79c8e2e..ad0c154 100644
+--- a/app/src/main/java/com/example/takwafortress/util/constants/BlockedPackages.kt
++++ b/app/src/main/java/com/example/takwafortress/util/constants/BlockedPackages.kt
+@@ -3,162 +3,15 @@ package com.example.takwafortress.util.constants
+ /**
+  * Central registry of package names the fortress knows about.
+  *
+- * BROWSERS      – suspended (greyed out, still visible in app drawer)
+- * NUCLEAR_BLACKLIST – hidden completely (invisible in launcher)
++ * Simplified: no packages are hard-blocked any more. Kept empty so older code compiles.
+  */
+ object BlockedPackages {
+ 
+     /** packageName → friendly display name */
+-    val BROWSERS: Map<String, String> = mapOf(
+-        "com.opera.browser"                     to "Opera Browser",
+-        "com.opera.browser.preinstall"          to "Opera Browser (Pre-installed)",
+-        "org.mozilla.firefox"                   to "Firefox",
+-        "com.microsoft.teams"                   to "Microsoft Edge",
+-        "com.microsoft.launcher"                to "Microsoft Edge (Launcher)",
+-        "com.duckduckgo.android.core"           to "DuckDuckGo Browser",
+-        "com.brave.browser"                     to "Brave Browser",
+-        "com.google.android.apps.chrome"        to "Chrome (duplicate check)",
+-        "com.sec.android.app.samsunginternet"   to "Samsung Internet"
+-    )
++    val BROWSERS: Map<String, String> = emptyMap()
+ 
+     /** packageName → friendly display name */
+-    val NUCLEAR_BLACKLIST: Map<String, String> = mapOf(
+-        "org.telegram.messenger"                to "Telegram",
+-        "com.reddit.client"                     to "Reddit",
+-        "com.twitter.android"                   to "X (Twitter)",
+-        "com.discord"                           to "Discord",
+-
+-        // ── Added from all_apps_and_sites.docx ──────────────────────────
+-        "org.thunderdog.challegram"               to "Telegram X",
+-        "proxy.browser.unblock.sites.proxybrowser.unblocksites" to "proxy.browser.unblock.sites.proxybrowser.unblocksites",
+-        "org.plus18.android"                      to "org.plus18.android",
+-        "chat.revolt"                             to "Stoat",
+-        "com.reddit.frontpage"                    to "Reddit",
+-        "xyz.blueskyweb.app"                      to "Bluesky",
+-        "org.joinmastodon.android"                to "Mastodon",
+-        "videoplayer.videodownloader.downloader"  to "videoplayer.videodownloader.downloader",
+-        "com.neurobro.browser"                    to "Neuro Browser",
+-        "com.vivaldi.browser"                     to "com.vivaldi.browser",
+-        "com.dajiu.stay"                          to "com.dajiu.stay",
+-        "net.quetta.browser"                      to "net.quetta.browser",
+-        "com.ycngmn.weblo"                        to "Weblo",
+-        "com.libertyvaults.wiko"                  to "com.libertyvaults.wiko",
+-        "com.startpage.app"                       to "com.startpage.app",
+-        "company.thebrowser.arc"                  to "company.thebrowser.arc",
+-        "com.brave.browser_nightly"               to "com.brave.browser_nightly",
+-        "io.friendly"                             to "Friendly",
+-        "com.deep.search.browser"                 to "com.deep.search.browser",
+-        "com.chimbori.hermitcrab"                 to "com.chimbori.hermitcrab",
+-        "io.friendly.twitter"                     to "Friendly For Twitter",
+-        "org.torproject.torbrowser"               to "org.torproject.torbrowser",
+-        "net.onecook.browser"                     to "net.onecook.browser",
+-        "com.medium.reader"                       to "Medium",
+-        "com.hootsuite.droid.full"                to "Hootsuite",
+-        "org.buffer.android"                      to "Buffer",
+-        "com.fedica.android"                      to "Fedica",
+-        "com.allsocialmediaapp.fastechpointapp"   to "All social Media In One App",
+-        "browser.vego.me"                         to "browser.vego.me",
+-        "com.all.one.social.media.network"        to "All Apps",
+-        "com.a_studio.socialmediapro"             to "All In One",
+-        "socialallinoneapp.allsocialmediaapps"    to "All Messenger",
+-        "com.socialmedia.allsocial"               to "All Social",
+-        "tutorials.seoschemes.sonyaath"           to "All Social Media -- All in One Social Media App",
+-        "messenger.video.call.chat.free"          to "All in 1 Video Messenger",
+-        "com.social.hemapp"                       to "All in One Social App",
+-        "social.app.india2010"                    to "All in One Social App",
+-        "com.technopath.myapplication"            to "All in one",
+-        "socialpilot.co"                          to "SocialPilot",
+-        "com.rainbow.aiobrowser"                  to "Smart App",
+-        "my.socialmedia"                          to "Social Media",
+-        "com.ronstech.allsocialmediaapp"          to "Social Networking Apps",
+-        "com.sclbrd.app"                          to "SocialBoard",
+-        "com.all_social_media.social_media"       to "Social Media",
+-        "dev.liukkonen.socialwrap"                to "SocialWrap",
+-        "com.socialbu.app"                        to "Socialbu",
+-        "io.publer"                               to "Publer",
+-        "com.vistasocial.android"                 to "VistaSocial",
+-        "com.sec.android.app.samsungapps"         to "Galaxy Store",
+-        "the.best.gram"                           to "Bestgram",
+-        "com.sociallite.android"                  to "SocialLite",
+-        "org.vidogram.lite"                       to "Vidogram Lite",
+-        "com.pl.premierleague"                    to "com.pl.premierleague",
+-        "com.facebook.katana"                     to "Facebook",
+-        "jp.ejimax.berrybrowser"                  to "jp.ejimax.berrybrowser",
+-        "com.ask.browser.ai"                      to "com.ask.browser.ai",
+-        "com.panalinks.webkey"                    to "Webview Open Site",
+-        "com.nktnet.webview_kiosk"                to "com.nktnet.webview_kiosk",
+-        "com.tcl.browser"                         to "com.tcl.browser",
+-        "de.ozerov.fully"                         to "de.ozerov.fully",
+-        "com.transsion.phoenix"                   to "com.transsion.phoenix",
+-        "com.snc.test.webview2"                   to "WEBVIEW TEST",
+-        "com.webview.space"                       to "WebView App",
+-        "com.tph.webViewappbuilder"               to "WebView App Builder",
+-        "com.brouken.websearch"                   to "Web Search Customizer",
+-        "com.webtoapp.converter"                  to "Web to App",
+-        "com.webviewstudio.app"                   to "WebView Studio",
+-        "com.webtoapp.convertwebsitetoapp"        to "WebtoApp",
+-        "com.xckevin.android.app.webview.test"    to "WebViewTest",
+-        "com.atriidev.webtoappconverter"          to "WebInto.App",
+-        "com.nexech.webview.basic"                to "WebView Basic",
+-        "com.nexech.webview.premium"              to "WebView Premium",
+-        "com.appbin.webviewworld"                 to "WebView World",
+-        "com.nexech.webview.standard"             to "WebView Standard",
+-        "com.AcmuStudio.webviewtest"              to "WebView Test",
+-        "com.webtoapp.converter.appmaker"         to "Website to App Builder",
+-        "com.webviewtest.app"                     to "WebView Test",
+-        "com.azc.terminet"                        to "TermiNet",
+-        "mgks.os.swv"                             to "Smart WebView",
+-        "com.chrome.dev"                          to "com.chrome.dev",
+-        "com.brgwebview.sa"                       to "BRG Webview",
+-        "com.satisfilabs.webclient"               to "Satisfi Webview Tester",
+-        "com.studentpasscard.driverappw"          to "Passcard Driver App WebView",
+-        "com.ncnp.app"                            to "Natively",
+-        "com.webviewnova.app"                     to "Split Browser: Remote Kiosk",
+-        "ua.tiar.devsurf"                         to "ua.tiar.devsurf",
+-        "com.probuse.odoo"                        to "Mobile WebView for Odoo",
+-        "ooo.alienz.devinspector"                 to "Devel Browser",
+-        "com.freekiosk"                           to "FreeKiosk",
+-        "com.rikpro.free"                         to "com.rikpro.free",
+-        "com.freewebtoapk"                        to "AppMint",
+-        "com.talpa.hibrowser"                     to "com.talpa.hibrowser",
+-        "com.phlox.tvwebbrowser"                  to "com.phlox.tvwebbrowser",
+-        "com.nexaford.webstore"                   to "Webify",
+-        "com.webviewcli"                          to "Webviewcli",
+-        "com.jcd.webvisiona28"                    to "WEBVISION A",
+-        "com.app.dr1009.webviewchecker"           to "webview_checker",
+-        "com.multipower.multiwebview"             to "multipower",
+-        "com.letsgoup.uServeWebview"              to "uServe",
+-        "com.exocad.webview"                      to "exocad webview",
+-        "com.google.android.apps.searchlite"      to "Google Go",
+-        "com.craftonative.webtoapp.converter.appbuilder.websitetoapp" to "Craft 2 Native",
+-        "com.ssolstice.browser"                   to "com.ssolstice.browser",
+-        "de.mxapplications.kmp.app.webdevstudio"  to "Webli",
+-        "com.lozsolutiont.htmlviewer"             to "HTML Viewer",
+-        "com.explore.web.browser"                 to "com.explore.web.browser",
+-        "reactivephone.msearch"                   to "reactivephone.msearch",
+-        "com.instantbits.cast.webvideo"           to "com.instantbits.cast.webvideo",
+-        "com.opera.gx"                            to "com.opera.gx",
+-        "com.fly.web.smart.browser"               to "com.fly.web.smart.browser",
+-        "com.qwant.liberty"                       to "com.qwant.liberty",
+-        "com.cloudmosa.puffinFree"                to "com.cloudmosa.puffinFree",
+-        "com.kagi.search"                         to "Kagi Search",
+-        "com.goodtoolapps.zeus"                   to "com.goodtoolapps.zeus",
+-        "org.mozilla.fenix"                       to "org.mozilla.fenix",
+-        "com.aospstudio.quicksearch"              to "com.aospstudio.quicksearch",
+-        "com.ecosia.android"                      to "com.ecosia.android",
+-        "com.kagi.smallweb"                       to "Small Web",
+-        "com.devhomc.search"                      to "SearchBar Ex",
+-        "rk.android.app.pixelsearch"              to "Pixel Search",
+-        "com.zerch.widget"                        to "Zerch",
+-        "com.yep.search"                          to "Yep",
+-        "com.chrome.canary"                       to "com.chrome.canary",
+-        "org.mozilla.firefox_beta"                to "org.mozilla.firefox_beta",
+-        "org.mozilla.focus"                       to "org.mozilla.focus",
+-        "com.duckduckgo.mobile.android"           to "com.duckduckgo.mobile.android",
+-        "com.fooview.android.fooview"             to "com.fooview.android.fooview",
+-        "shareit.lite"                            to "shareit.lite",
+-        "com.quora.android"                       to "Quora",
+-    )
++    val NUCLEAR_BLACKLIST: Map<String, String> = emptyMap()
+ 
+     /**
+      * Returns a friendly name for any known package, or the raw package name as fallback.
+diff --git a/app/src/main/res/xml/accessibility_service_config.xml b/app/src/main/res/xml/accessibility_service_config.xml
+deleted file mode 100644
+index 62ad3c6..0000000
+--- a/app/src/main/res/xml/accessibility_service_config.xml
++++ /dev/null
+@@ -1,8 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+-    android:accessibilityFeedbackType="feedbackGeneric"
+-    android:accessibilityFlags="flagReportViewIds|flagRequestFilterKeyEvents"
+-    android:canRetrieveWindowContent="true"
+-    android:notificationTimeout="100"
+-    android:packageNames="com.android.chrome,com.instagram.android,com.facebook.katana,com.twitter.android" />
+\ No newline at end of file
+diff --git a/app/src/main/res/xml/device_admin_policies.xml b/app/src/main/res/xml/device_admin_policies.xml
+index a405218..1514b1d 100644
+--- a/app/src/main/res/xml/device_admin_policies.xml
++++ b/app/src/main/res/xml/device_admin_policies.xml
+@@ -1,27 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+     <uses-policies>
+-        <!-- Force lock -->
+         <force-lock />
+-
+-        <!-- Wipe data (factory reset protection) -->
+-        <wipe-data />
+-
+-        <!-- Reset password -->
+-        <reset-password />
+-
+-        <!-- Limit password -->
+-        <limit-password />
+-
+-        <!-- Watch login attempts -->
+-        <watch-login />
+-
+-
+-
+-        <!-- Disable keyguard features -->
+-        <disable-keyguard-features />
+-
+-        <!-- Set global proxy -->
+-        <set-global-proxy />
+     </uses-policies>
+-</device-admin>
+\ No newline at end of file
++</device-admin>
